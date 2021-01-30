@@ -265,14 +265,13 @@ local function load_upnext()
     local res, n = parse_upnext(download_upnext(url), url)
 
     -- Fallback to Invidious API
-    if n == 0 then
+    if n == 0 and opts.invidious_instance and opts.invidious_instance ~= "" then
         res = get_invidious(url)
         n = table_size(res)
     end
 
     return res, n
 end
-
 
 local function on_file_loaded(_)
     local url = mp.get_property("path")
