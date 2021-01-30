@@ -289,10 +289,10 @@ local function show_menu()
     mp.osd_message("fetching 'up next' with wget...", 60)
 
     local upnext, num_upnext = load_upnext()
-    mp.osd_message("", 1)
     if num_upnext == 0 then
         return
     end
+    mp.osd_message("", 1)
 
     local timeout
     local selected = 1
