@@ -51,6 +51,10 @@ local opts = {
     --other
     menu_timeout = 10,
     youtube_url = "https://www.youtube.com/watch?v=%s",
+
+    -- Fallback Invidious instance, see https://instances.invidio.us/ for alternatives e.g. https://invidious.snopyta.org
+    invidious_instance = "https://invidious.xyz",
+
     check_certificate = true,
 }
 (require 'mp.options').read_options(opts, "youtube-upnext")
@@ -113,6 +117,66 @@ local function download_upnext(url)
     msg.error("failed to get upnext data: pos1=" .. tostring(pos1) .. " pos2=" ..tostring(pos2))
     return "{}"
 end
+
+local function get_invidious(url)
+    -- convert to invidious API call
+    url = string.gsub(url, "https://youtube%.com/watch%?v=", opts.invidious_instance .. "/api/v1/videos/")
+    url = string.gsub(url, "https://www%.youtube%.com/watch%?v=", opts.invidious_instance .. "/api/v1/videos/")
+    url = string.gsub(url, "https://youtu%.be/", opts.invidious_instance .. "/api/v1/videos/")
+    msg.debug("Invidious url:" .. url)
+
+    local command = {"wget", "-q", "-O", "-"}
+    if not opts.check_certificate then
+        table.insert(command, "--no-check-certificate")
+    end
+    table.insert(command, url)
+
+    local es, s, _ = exec(command)
+
+    if (es ~= 0) or (s == nil) or (s == "") then
+        if es == 5 then
+            mp.osd_message("upnext failed: wget does not support HTTPS", 10)
+            msg.error("wget is missing certificates, disable check-certificate in userscript options")
+        elseif es == -1 or es == 127 or es == 9009 then
+            mp.osd_message("upnext failed: wget not found", 10)
+            msg.error("wget/ wget.exe is missing. Please install it or put an executable in your PATH")
+        else
+            mp.osd_message("upnext failed: error=" .. tostring(es), 10)
+            msg.error("failed to get invidious: error=" .. tostring(es))
+        end
+        return {}
+    end
+
+    local data, err = utils.parse_json(s)
+    if data == nil then
+        mp.osd_message("upnext fetch failed (Invidious): JSON decode failed", 10)
+        msg.error("parse_json failed (Invidious): " .. err)
+        return {}
+    end
+
+    if data.recommendedVideos then
+        local res = {}
+        msg.verbose("wget and json decode succeeded! (Invidious)")
+        for i, v in ipairs(data.recommendedVideos) do
+            table.insert(res, {
+                    index=i,
+                    label=v.title .. " - " .. v.author,
+                    file=string.format(opts.youtube_url, v.videoId)
+                })
+        end
+        mp.osd_message("upnext fetch from Invidious succeeded", 10)
+        return res
+    elseif data.error then
+        mp.osd_message("upnext fetch failed (Invidious): " .. data.error, 10)
+        msg.error("Invidious error: " .. data.error)
+    else
+        mp.osd_message("upnext: No recommended videos! (Invidious)", 10)
+        msg.error("No recommended videos! (Invidious)")
+    end
+
+    return {}
+end
+
 
 local function parse_upnext(json_str, url)
     if json_str == "{}" then
@@ -199,6 +263,12 @@ local function load_upnext()
     end
 
     local res, n = parse_upnext(download_upnext(url), url)
+
+    -- Fallback to Invidious API
+    if n == 0 then
+        res = get_invidious(url)
+        n = table_size(res)
+    end
 
     return res, n
 end
