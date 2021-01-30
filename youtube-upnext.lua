@@ -56,102 +56,136 @@ local opts = {
 (require 'mp.options').read_options(opts, "youtube-upnext")
 
 local destroyer = nil
-upnext_cache={}
-function on_file_loaded(event)
-    local url = mp.get_property("path")
-    url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
-    if string.find(url, "youtu") ~= nil then
-        local upnext, num_upnext = load_upnext()
-        if num_upnext > 0 then
-            mp.commandv("loadfile", upnext[1].file, "append")
-        end
-    end
-end
+local upnext_cache={}
 
-function show_menu()
-    mp.osd_message("fetching 'up next' with wget...", 60)
 
-    local upnext, num_upnext = load_upnext()
-    mp.osd_message("", 1)
-    if num_upnext == 0 then
-        return
-    end
-
-    local selected = 1
-    function selected_move(amt)
-        selected = selected + amt
-        if selected < 1 then
-            selected = num_upnext
-        elseif selected > num_upnext then
-            selected = 1
-        end
-        timeout:kill()
-        timeout:resume()
-        draw_menu()
-    end
-    function choose_prefix(i)
-        if i == selected then
-            return opts.cursor_selected
-        else
-            return opts.cursor_unselected
-        end
-    end
-
-    function draw_menu()
-        local ass = assdraw.ass_new()
-
-        ass:pos(opts.text_padding_x, opts.text_padding_y)
-        ass:append(opts.style_ass_tags)
-
-        for i,v in ipairs(upnext) do
-            ass:append(choose_prefix(i)..v.label.."\\N")
-        end
-
-      local w, h = mp.get_osd_size()
-      if opts.scale_playlist_by_window then w,h = 0, 0 end
-      mp.set_osd_ass(w, h, ass.text)
-    end
-
-    function destroy()
-        timeout:kill()
-        mp.set_osd_ass(0,0,"")
-        mp.remove_key_binding("move_up")
-        mp.remove_key_binding("move_down")
-        mp.remove_key_binding("select")
-        mp.remove_key_binding("escape")
-        destroyer = nil
-    end
-    timeout = mp.add_periodic_timer(opts.menu_timeout, destroy)
-    destroyer = destroy
-
-    mp.add_forced_key_binding(opts.up_binding,     "move_up",   function() selected_move(-1) end, {repeatable=true})
-    mp.add_forced_key_binding(opts.down_binding,   "move_down", function() selected_move(1)  end, {repeatable=true})
-    mp.add_forced_key_binding(opts.select_binding, "select",    function()
-        destroy()
-        mp.commandv("loadfile", upnext[selected].file, "replace")
-        reload_resume()
-    end)
-    mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
-
-    draw_menu()
-    return
-end
-
-function table_size(t)
+local function table_size(t)
     local s = 0
-    for i,v in ipairs(t) do
+    for _, _ in ipairs(t) do
         s = s+1
     end
     return s
 end
 
-function load_upnext()
+local function exec(args)
+    local ret = utils.subprocess({args = args})
+    return ret.status, ret.stdout, ret
+end
+
+local function download_upnext(url)
+    local command = {"wget", "-q", "-O", "-"}
+    if not opts.check_certificate then
+        table.insert(command, "--no-check-certificate")
+    end
+    table.insert(command, url)
+
+    local es, s, _ = exec(command)
+
+    if (es ~= 0) or (s == nil) or (s == "") then
+        if es == 5 then
+            mp.osd_message("upnext failed: wget does not support HTTPS", 10)
+            msg.error("wget is missing certificates, disable check-certificate in userscript options")
+        elseif es == -1 or es == 127 or es == 9009 then
+            mp.osd_message("upnext failed: wget not found", 10)
+            msg.error("wget/ wget.exe is missing. Please install it or put an executable in your PATH")
+        else
+            mp.osd_message("upnext failed: error=" .. tostring(es), 10)
+            msg.error("failed to get upnext list: error=" .. tostring(es))
+        end
+        return "{}"
+    end
+
+    local pos1 = string.find(s, "playerOverlayRenderer", 1, true)
+    if pos1 == nil then
+        mp.osd_message("upnext failed, no upnext data found err01", 10)
+        msg.error("failed to find json position 01: pos1=nil")
+        return "{}"
+    end
+    local pos2 = string.find(s, "}},\"overlay\"", pos1 + 1, true)
+    if pos2 ~= nil then
+        s = string.sub(s, pos1, pos2)
+        return "{\"" .. s .. "}"
+    else
+        msg.error("failed to find json position 02")
+    end
+
+    mp.osd_message("upnext failed, no upnext data found err03", 10)
+    msg.error("failed to get upnext data: pos1=" .. tostring(pos1) .. " pos2=" ..tostring(pos2))
+    return "{}"
+end
+
+local function parse_upnext(json_str, url)
+    if json_str == "{}" then
+      return {}, 0
+    end
+
+    local data, err = utils.parse_json(json_str)
+
+    if data == nil then
+        mp.osd_message("upnext failed: JSON decode failed", 10)
+        msg.error("parse_json failed: " .. tostring(err))
+        msg.debug("Corrupted JSON:\n" .. json_str .. "\n")
+        return {}, 0
+    end
+
+    local res = {}
+    msg.verbose("wget and json decode succeeded!")
+
+    local index = 1
+    local autoplay_id = nil
+    if data.playerOverlayRenderer
+    and data.playerOverlayRenderer.autoplay
+    and data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer then
+        local title = data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoTitle.simpleText
+        local video_id = data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoId
+        autoplay_id = video_id
+        msg.debug("Found autoplay video")
+        table.insert(res, {
+            index=index,
+            label=title,
+            file=string.format(opts.youtube_url, video_id)
+        })
+        index = index + 1
+    end
+
+    if data.playerOverlayRenderer
+    and data.playerOverlayRenderer.endScreen
+    and data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
+    and data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
+    then
+        local n = table_size(data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results)
+        msg.debug("Found " .. tostring(n) .. " endScreen videos")
+        for i, v in ipairs(data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results) do
+            if v.endScreenVideoRenderer
+            and v.endScreenVideoRenderer.title
+            and v.endScreenVideoRenderer.title.simpleText then
+                local title = v.endScreenVideoRenderer.title.simpleText
+                local video_id = v.endScreenVideoRenderer.videoId
+                if video_id ~= autoplay_id then
+                    table.insert(res, {
+                        index=index+i,
+                        label=title,
+                        file=string.format(opts.youtube_url, video_id)
+                    })
+                end
+            end
+        end
+    end
+
+    table.sort(res, function(a, b) return a.index < b.index end)
+
+    upnext_cache[url] = res
+    return res, table_size(res)
+end
+
+
+local function load_upnext()
     local url = mp.get_property("path")
 
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
 
     if string.find(url, "//youtu.be/") == nil
-    and string.find(url, "//ww.youtu.be/") == nil
+    and string.find(url, "//www.youtube.co.uk/") == nil
     and string.find(url, "//youtube.com/") == nil
     and string.find(url, "//www.youtube.com/") == nil
     then
@@ -169,92 +203,84 @@ function load_upnext()
     return res, n
 end
 
-function download_upnext(url)
-    local function exec(args)
-        local ret = utils.subprocess({args = args})
-        return ret.status, ret.stdout, ret
-    end
 
-    local command = {"wget", "-q", "-O", "-"}
-    if not opts.check_certificate then
-        table.insert(command, "--no-check-certificate")
-    end
-    table.insert(command, url)
-
-    local es, s, result = exec(command)
-
-    if (es ~= 0) or (s == nil) or (s == "") then
-        if es == 5 then
-            mp.osd_message("upnext failed: wget does not support HTTPS", 10)
-            msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == 127 or es == 9009 then
-            mp.osd_message("upnext failed: wget not found", 10)
-            msg.error("wget/ wget.exe is missing. Please install it or put an executable in your PATH")
-        else
-            mp.osd_message("upnext failed: error=" .. tostring(es), 10)
-            msg.error("failed to get upnext list: error=%s" .. tostring(es))
+local function on_file_loaded(_)
+    local url = mp.get_property("path")
+    url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
+    if string.find(url, "youtu") ~= nil then
+        local upnext, num_upnext = load_upnext()
+        if num_upnext > 0 then
+            mp.commandv("loadfile", upnext[1].file, "append")
         end
-        return "{}"
     end
-
-    local pos1 = string.find(s, "watchNextEndScreenRenderer", 1, true)
-    if pos1 == nil then
-        mp.osd_message("upnext failed, no upnext data found err01", 10)
-        msg.error("failed to find json position 01: pos1=nil")
-        return "{}"
-    end
-
-    local pos2 = string.find(s, "}}}],\\\"", pos1 + 1, true)
-    if pos2 ~= nil then
-        s = string.sub(s, pos1, pos2)
-        return "{\"" .. string.gsub(s, "\\\"", "\"") .. "}}]}}"
-    end
-
-    msg.verbose("failed to find json position 2: Trying alternative")
-    pos2 = string.find(s, "}}}]}}", pos1 + 1, true)
-
-    if pos2 ~= nil then
-        msg.verbose("Alternative found!")
-        s = string.sub(s, pos1, pos2)
-        return "{\"" .. string.gsub(s, "\\\"", "\"") .. "}}]}}]}}"
-    end
-
-    mp.osd_message("upnext failed, no upnext data found err03", 10)
-    msg.error("failed to get upnext data: pos1=" .. tostring(pos1) .. " pos2=" ..tostring(pos2))
-    return "{}"
 end
 
-function parse_upnext(json_str, url)
-    if json_str == "{}" then
-      return {}, 0
+local function show_menu()
+    mp.osd_message("fetching 'up next' with wget...", 60)
+
+    local upnext, num_upnext = load_upnext()
+    mp.osd_message("", 1)
+    if num_upnext == 0 then
+        return
     end
 
-    local data, err = utils.parse_json(json_str)
-
-    if data == nil then
-        mp.osd_message("upnext failed: JSON decode failed", 10)
-        msg.error("parse_json failed: " .. err)
-        return {}, 0
-    end
-
-    local res = {}
-    msg.verbose("wget and json decode succeeded!")
-    for i, v in ipairs(data.watchNextEndScreenRenderer.results) do
-        if v.endScreenVideoRenderer ~= nil and v.endScreenVideoRenderer.title ~= nil and v.endScreenVideoRenderer.title.simpleText ~= nil then
-            local title = v.endScreenVideoRenderer.title.simpleText
-            local video_id = v.endScreenVideoRenderer.videoId
-            table.insert(res, {
-                index=i,
-                label=title,
-                file=string.format(opts.youtube_url, video_id)
-            })
+    local timeout
+    local selected = 1
+    local function choose_prefix(i)
+        if i == selected then
+            return opts.cursor_selected
+        else
+            return opts.cursor_unselected
         end
     end
+    local function draw_menu()
+        local ass = assdraw.ass_new()
 
-    table.sort(res, function(a, b) return a.index < b.index end)
+        ass:pos(opts.text_padding_x, opts.text_padding_y)
+        ass:append(opts.style_ass_tags)
 
-    upnext_cache[url] = res
-    return res, table_size(res)
+        for i,v in ipairs(upnext) do
+            ass:append(choose_prefix(i)..v.label.."\\N")
+        end
+
+      local w, h = mp.get_osd_size()
+      if opts.scale_playlist_by_window then w,h = 0, 0 end
+      mp.set_osd_ass(w, h, ass.text)
+    end
+    local function selected_move(amt)
+        selected = selected + amt
+        if selected < 1 then
+            selected = num_upnext
+        elseif selected > num_upnext then
+            selected = 1
+        end
+        timeout:kill()
+        timeout:resume()
+        draw_menu()
+    end
+
+    local function destroy()
+        timeout:kill()
+        mp.set_osd_ass(0,0,"")
+        mp.remove_key_binding("move_up")
+        mp.remove_key_binding("move_down")
+        mp.remove_key_binding("select")
+        mp.remove_key_binding("escape")
+        destroyer = nil
+    end
+    timeout = mp.add_periodic_timer(opts.menu_timeout, destroy)
+    destroyer = destroy
+
+    mp.add_forced_key_binding(opts.up_binding,     "move_up",   function() selected_move(-1) end, {repeatable=true})
+    mp.add_forced_key_binding(opts.down_binding,   "move_down", function() selected_move(1)  end, {repeatable=true})
+    mp.add_forced_key_binding(opts.select_binding, "select",    function()
+        destroy()
+        mp.commandv("loadfile", upnext[selected].file, "replace")
+    end)
+    mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
+
+    draw_menu()
+    return
 end
 
 
