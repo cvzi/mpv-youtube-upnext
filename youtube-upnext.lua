@@ -99,16 +99,16 @@ local function download_upnext(url)
         return "{}"
     end
 
-    local pos1 = string.find(s, "playerOverlayRenderer", 1, true)
+    local pos1 = string.find(s, "ytInitialData =", 1, true)
     if pos1 == nil then
         mp.osd_message("upnext failed, no upnext data found err01", 10)
         msg.error("failed to find json position 01: pos1=nil")
         return "{}"
     end
-    local pos2 = string.find(s, "}},\"overlay\"", pos1 + 1, true)
+    local pos2 = string.find(s, ";%s*</script>", pos1 + 1)
     if pos2 ~= nil then
-        s = string.sub(s, pos1, pos2)
-        return "{\"" .. s .. "}"
+        s = string.sub(s, pos1 + 15, pos2 - 1)
+        return s
     else
         msg.error("failed to find json position 02")
     end
@@ -197,11 +197,12 @@ local function parse_upnext(json_str, url)
 
     local index = 1
     local autoplay_id = nil
-    if data.playerOverlayRenderer
-    and data.playerOverlayRenderer.autoplay
-    and data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer then
-        local title = data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoTitle.simpleText
-        local video_id = data.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoId
+    if data.playerOverlays
+    and data.playerOverlays.playerOverlayRenderer
+    and data.playerOverlays.playerOverlayRenderer.autoplay
+    and data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer then
+        local title = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoTitle.simpleText
+        local video_id = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoId
         autoplay_id = video_id
         msg.debug("Found autoplay video")
         table.insert(res, {
@@ -212,14 +213,15 @@ local function parse_upnext(json_str, url)
         index = index + 1
     end
 
-    if data.playerOverlayRenderer
-    and data.playerOverlayRenderer.endScreen
-    and data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
-    and data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
+    if data.playerOverlays
+    and data.playerOverlays.playerOverlayRenderer
+    and data.playerOverlays.playerOverlayRenderer.endScreen
+    and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
+    and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
     then
-        local n = table_size(data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results)
+        local n = table_size(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results)
         msg.debug("Found " .. tostring(n) .. " endScreen videos")
-        for i, v in ipairs(data.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results) do
+        for i, v in ipairs(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results) do
             if v.endScreenVideoRenderer
             and v.endScreenVideoRenderer.title
             and v.endScreenVideoRenderer.title.simpleText then
@@ -227,9 +229,57 @@ local function parse_upnext(json_str, url)
                 local video_id = v.endScreenVideoRenderer.videoId
                 if video_id ~= autoplay_id then
                     table.insert(res, {
-                        index=index+i,
+                        index=index + i,
                         label=title,
                         file=string.format(opts.youtube_url, video_id)
+                    })
+                end
+            end
+        end
+        index = index + n
+    end
+
+    if data.contents
+    and data.contents.twoColumnWatchNextResults
+    and data.contents.twoColumnWatchNextResults.secondaryResults
+    then
+        local secondaryResults = data.contents.twoColumnWatchNextResults.secondaryResults
+        if secondaryResults.secondaryResults then
+            secondaryResults = secondaryResults.secondaryResults
+        end
+        local n = table_size(secondaryResults.results)
+        msg.debug("Found " .. tostring(n) .. " watchNextResults videos")
+        for i, v in ipairs(secondaryResults.results) do
+            local compactVideoRenderer = nil
+            local watchnextindex = index
+            if v.compactAutoplayRenderer
+            and v.compactAutoplayRenderer
+            and v.compactAutoplayRenderer.contents
+            and v.compactAutoplayRenderer.contents.compactVideoRenderer then
+                compactVideoRenderer = v.compactAutoplayRenderer.contents.compactVideoRenderer
+                watchnextindex = 0
+            elseif v.compactVideoRenderer then
+                compactVideoRenderer = v.compactVideoRenderer
+            end
+            if compactVideoRenderer
+            and compactVideoRenderer.videoId
+            and compactVideoRenderer.title
+            and compactVideoRenderer.title.simpleText
+            then
+                local title = compactVideoRenderer.title.simpleText
+                local video_id = compactVideoRenderer.videoId
+                local video_url = string.format(opts.youtube_url, video_id)
+                local duplicate = false
+                for _, entry in ipairs(res) do
+                    if video_url == entry.file then
+                        duplicate = true
+                    end
+                end
+                if not duplicate then
+                    table.insert(res, {
+                        index=watchnextindex + i,
+                        label=title,
+                        file=url
                     })
                 end
             end
