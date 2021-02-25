@@ -178,7 +178,7 @@ local function get_invidious(url)
 end
 
 
-local function parse_upnext(json_str, url)
+local function parse_upnext(json_str, current_video_url)
     if json_str == "{}" then
       return {}, 0
     end
@@ -279,7 +279,7 @@ local function parse_upnext(json_str, url)
                     table.insert(res, {
                         index=watchnextindex + i,
                         label=title,
-                        file=url
+                        file=video_url
                     })
                 end
             end
@@ -288,7 +288,7 @@ local function parse_upnext(json_str, url)
 
     table.sort(res, function(a, b) return a.index < b.index end)
 
-    upnext_cache[url] = res
+    upnext_cache[current_video_url] = res
     return res, table_size(res)
 end
 
