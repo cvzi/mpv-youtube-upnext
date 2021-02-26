@@ -55,12 +55,19 @@ local opts = {
     -- Fallback Invidious instance, see https://instances.invidio.us/ for alternatives e.g. https://invidious.snopyta.org
     invidious_instance = "https://invidious.xyz",
 
-    check_certificate = true,
+    -- Keep the width of the window the same when the next video is played
+    restore_window_width = false,
+
+    -- On Windows wget.exe may not be able to check SSL certificates for HTTPS, so you can disable checking here
+    check_certificate = true
 }
 (require 'mp.options').read_options(opts, "youtube-upnext")
 
 local destroyer = nil
 local upnext_cache={}
+local prefered_win_width = nil
+local last_dheight = nil
+local last_dwidth = nil
 
 
 local function table_size(t)
@@ -402,6 +409,49 @@ local function show_menu()
     return
 end
 
+local function on_window_scale_changed(_, value)
+    if value == nil then
+        return
+    end
+    local dwidth = mp.get_property("dwidth")
+    local dheight = mp.get_property("dheight")
+    if dwidth ~= nil and dheight ~= nil and dwidth == last_dwidth and dheight == last_dheight then
+        -- If video size stayed the same, then the scaling was probably done by the user to we save it
+        local current_window_scale = mp.get_property("current-window-scale")
+        prefered_win_width = dwidth * current_window_scale
+    end
+end
+
+local function on_dwidth_change(_, value)
+    if value == nil then
+        return
+    end
+    local dwidth = mp.get_property("dwidth")
+    local dheight = mp.get_property("dheight")
+    if dwidth == nil or dheight == nil then
+        return
+    end
+
+    -- Save new video size
+    last_dwidth = dwidth
+    last_dheight = dheight
+
+    if prefered_win_width == nil then
+        return
+    end
+    -- Scale window to prefered width
+    local current_window_scale = mp.get_property("current-window-scale")
+    local window_width = dwidth * current_window_scale
+    local new_scale = current_window_scale
+    if prefered_win_width ~= nil and math.abs(prefered_win_width - window_width) > 2 then
+        new_scale = prefered_win_width / dwidth
+    end
+
+    if new_scale ~= current_window_scale then
+        mp.set_property("window-scale", new_scale)
+    end
+end
+
 
 -- register script message to show menu
 mp.register_script_message("toggle-upnext-menu",
@@ -418,4 +468,9 @@ mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
 
 if opts.auto_add then
     mp.register_event("file-loaded", on_file_loaded)
+end
+
+if opts.restore_window_width then
+    mp.observe_property("current-window-scale", "number", on_window_scale_changed)
+    mp.observe_property("dwidth", "number", on_dwidth_change)
 end
