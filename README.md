@@ -29,6 +29,23 @@ If you downloaded/installed the wget executable, you have to [add the directory 
 Depending on your setup you may have to set `check_certificate = false` in the lua script or in the config file,
 because some wget versions on Windows seem to have problems with HTTPS/SSL certificates.
 
+### mpv.net:
+The script folder for mpv.net is:
+`%APPDATA%\mpv.net\scripts`
+
+The .conf files belong into:
+`%APPDATA%\mpv.net\script-opts`
+
+The keyboard shortcut in the script and the .conf-file doesn't work with mpv.net.
+You need to set the keyboard shortcut yourself in your `input.conf`. Default location is `%APPDATA%\mpv.net\input.conf`.
+Add the following line to the end of your `input.conf` (change the key if it's already used):
+
+```
+
+ Ctrl+u     script-message-to   youtube_upnext   upnext-menu
+
+```
+
 ## Credit
 - I pretty much copied the [mpv-youtube-quality](https://github.com/jgreco/mpv-youtube-quality) script and added wget
 
