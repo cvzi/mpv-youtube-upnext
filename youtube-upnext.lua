@@ -59,16 +59,33 @@ local opts = {
     restore_window_width = false,
 
     -- On Windows wget.exe may not be able to check SSL certificates for HTTPS, so you can disable checking here
-    check_certificate = true
+    check_certificate = true,
+
+    -- Use a cookies file
+    -- Same as youtube-dl --cookies or wget --load-cookies
+    -- If you don't set this, the script may create a cookie file for you
+    -- On Windows you need to use a double blackslash or a single fordwardslash
+    -- For example "C:\\Users\\Username\\cookies.txt"
+    -- Or "C:/Users/Username/cookies.txt"
+    cookies = ""
 }
 (require 'mp.options').read_options(opts, "youtube-upnext")
+
+-- Command line options
+if opts.cookies == nil or opts.cookies == "" then
+    local raw_options = mp.get_property_native("options/ytdl-raw-options")
+    for param, arg in pairs(raw_options) do
+        if (param == "cookies") and (arg ~= "") then
+            opts.cookies = arg
+        end
+    end
+end
 
 local destroyer = nil
 local upnext_cache={}
 local prefered_win_width = nil
 local last_dheight = nil
 local last_dwidth = nil
-
 
 local function table_size(t)
     local s = 0
@@ -83,10 +100,28 @@ local function exec(args)
     return ret.status, ret.stdout, ret
 end
 
-local function download_upnext(url)
+local function url_encode(s)
+    local function repl(x)
+        return string.format("%%%02X", string.byte(x))
+    end
+   return string.gsub(s, "([^0-9a-zA-Z!'()*._~-])", repl)
+ end
+
+local function download_upnext(url, post_data)
     local command = {"wget", "-q", "-O", "-"}
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
+    end
+    if post_data then
+        table.insert(command, "--post-data")
+        table.insert(command, post_data)
+    end
+    if opts.cookies then
+         table.insert(command, "--load-cookies")
+         table.insert(command, opts.cookies)
+         table.insert(command, "--save-cookies")
+         table.insert(command, opts.cookies)
+         table.insert(command, "--keep-session-cookies")
     end
     table.insert(command, url)
 
@@ -104,6 +139,26 @@ local function download_upnext(url)
             msg.error("failed to get upnext list: error=" .. tostring(es))
         end
         return "{}"
+    end
+
+    local consent_pos = s:find('action="https://consent.youtube.com/s"')
+    if consent_pos ~= nil then
+        -- Accept cookie consent form
+        msg.debug("Need to accept cookie consent form")
+        s = s:sub(s:find(">", consent_pos + 1, true), s:find("</form", consent_pos + 1, true))
+
+        local post_str = ""
+        for k, v in string.gmatch(s, "name=\"([^\"]+)\" value=\"([^\"]*)\"") do
+            msg.debug("name=" .. tostring(k) .. " value=".. tostring(v))
+            post_str = post_str .. url_encode(k) .. "=" ..  url_encode(v) .. "&"
+        end
+        msg.debug("post-data=" .. tostring(post_str))
+        if opts.cookies == nil or opts.cookies == "" then
+            opts.cookies = os.getenv("TEMP") .. "/youtube-upnext.cookies"
+            msg.warn("Created a cookies jar file at \"" .. tostring(opts.cookies) ..
+                "\". To hide this warning, set a cookies file in the script configuration")
+        end
+        return download_upnext("https://consent.youtube.com/s", post_str)
     end
 
     local pos1 = string.find(s, "ytInitialData =", 1, true)
@@ -319,7 +374,7 @@ local function load_upnext()
         return res, table_size(res)
     end
 
-    local res, n = parse_upnext(download_upnext(url), url)
+    local res, n = parse_upnext(download_upnext(url, nil), url)
 
     -- Fallback to Invidious API
     if n == 0 and opts.invidious_instance and opts.invidious_instance ~= "" then
