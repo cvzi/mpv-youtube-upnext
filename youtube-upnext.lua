@@ -154,9 +154,16 @@ local function download_upnext(url, post_data)
         end
         msg.debug("post-data=" .. tostring(post_str))
         if opts.cookies == nil or opts.cookies == "" then
-            opts.cookies = os.getenv("TEMP") .. "/youtube-upnext.cookies"
-            msg.warn("Created a cookies jar file at \"" .. tostring(opts.cookies) ..
-                "\". To hide this warning, set a cookies file in the script configuration")
+            local temp_dir = os.getenv("TEMP")
+            if temp_dir == nil or temp_dir == "" then
+                opts.cookies = io.tmpfile()
+                msg.warn("Created a temporary cookies jar file. To hide this warning," ..
+                    "set a cookies file in the script configuration")
+            else
+                opts.cookies = temp_dir .. "/youtube-upnext.cookies"
+                msg.warn("Created a cookies jar file at \"" .. tostring(opts.cookies) ..
+                    "\". To hide this warning, set a cookies file in the script configuration")
+            end
         end
         return download_upnext("https://consent.youtube.com/s", post_str)
     end
