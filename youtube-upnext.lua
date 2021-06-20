@@ -62,11 +62,12 @@ local opts = {
     check_certificate = true,
 
     -- Use a cookies file
-    -- Same as youtube-dl --cookies or wget --load-cookies
-    -- If you don't set this, the script may create a cookie file for you
+    -- (Same as youtube-dl --cookies or wget --load-cookies)
+    -- If you don't set this, the script will try to create a temporary cookies file for you
     -- On Windows you need to use a double blackslash or a single fordwardslash
     -- For example "C:\\Users\\Username\\cookies.txt"
     -- Or "C:/Users/Username/cookies.txt"
+    -- Alternatively you can set this from the command line with --ytdl-raw-options=cookies=file.txt
     cookies = ""
 }
 (require 'mp.options').read_options(opts, "youtube-upnext")
@@ -156,14 +157,15 @@ local function download_upnext(url, post_data)
         if opts.cookies == nil or opts.cookies == "" then
             local temp_dir = os.getenv("TEMP")
             if temp_dir == nil or temp_dir == "" then
-                opts.cookies = io.tmpfile()
-                msg.warn("Created a temporary cookies jar file. To hide this warning," ..
-                    "set a cookies file in the script configuration")
+                temp_dir = os.getenv("XDG_RUNTIME_DIR")
+            end
+            if temp_dir == nil or temp_dir == "" then
+                opts.cookies = os.tmpname()
             else
                 opts.cookies = temp_dir .. "/youtube-upnext.cookies"
-                msg.warn("Created a cookies jar file at \"" .. tostring(opts.cookies) ..
-                    "\". To hide this warning, set a cookies file in the script configuration")
             end
+            msg.warn("Created a cookies jar file at \"" .. tostring(opts.cookies) ..
+                "\". To hide this warning, set a cookies file in the script configuration")
         end
         return download_upnext("https://consent.youtube.com/s", post_str)
     end
