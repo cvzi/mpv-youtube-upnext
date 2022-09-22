@@ -33,7 +33,7 @@ local opts = {
     cursor_unselected = "○ ",
 
     --font size scales by window, if false requires larger font and padding sizes
-    scale_playlist_by_window=false,
+    scale_playlist_by_window = false,
 
     --playlist ass style overrides inside curly brackets, \keyvalue is one field, extra \ for escape in lua
     --example {\\fnUbuntu\\fs10\\b0\\bord1} equals: font=Ubuntu, size=10, bold=no, border=1
@@ -83,21 +83,22 @@ if opts.cookies == nil or opts.cookies == "" then
 end
 
 local destroyer = nil
-local upnext_cache={}
+local upnext_cache = {}
 local prefered_win_width = nil
 local last_dheight = nil
 local last_dwidth = nil
+local watched_ids = {}
 
 local function table_size(t)
     local s = 0
     for _, _ in ipairs(t) do
-        s = s+1
+        s = s + 1
     end
     return s
 end
 
 local function exec(args)
-    local ret = utils.subprocess({args = args})
+    local ret = utils.subprocess({ args = args })
     return ret.status, ret.stdout, ret
 end
 
@@ -105,11 +106,12 @@ local function url_encode(s)
     local function repl(x)
         return string.format("%%%02X", string.byte(x))
     end
-   return string.gsub(s, "([^0-9a-zA-Z!'()*._~-])", repl)
- end
+
+    return string.gsub(s, "([^0-9a-zA-Z!'()*._~-])", repl)
+end
 
 local function download_upnext(url, post_data)
-    local command = {"wget", "-q", "-O", "-"}
+    local command = { "wget", "-q", "-O", "-" }
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
     end
@@ -118,11 +120,11 @@ local function download_upnext(url, post_data)
         table.insert(command, post_data)
     end
     if opts.cookies then
-         table.insert(command, "--load-cookies")
-         table.insert(command, opts.cookies)
-         table.insert(command, "--save-cookies")
-         table.insert(command, opts.cookies)
-         table.insert(command, "--keep-session-cookies")
+        table.insert(command, "--load-cookies")
+        table.insert(command, opts.cookies)
+        table.insert(command, "--save-cookies")
+        table.insert(command, opts.cookies)
+        table.insert(command, "--keep-session-cookies")
     end
     table.insert(command, url)
 
@@ -150,8 +152,8 @@ local function download_upnext(url, post_data)
 
         local post_str = ""
         for k, v in string.gmatch(s, "name=\"([^\"]+)\" value=\"([^\"]*)\"") do
-            msg.debug("name=" .. tostring(k) .. " value=".. tostring(v))
-            post_str = post_str .. url_encode(k) .. "=" ..  url_encode(v) .. "&"
+            msg.debug("name=" .. tostring(k) .. " value=" .. tostring(v))
+            post_str = post_str .. url_encode(k) .. "=" .. url_encode(v) .. "&"
         end
         msg.debug("post-data=" .. tostring(post_str))
         if opts.cookies == nil or opts.cookies == "" then
@@ -185,7 +187,7 @@ local function download_upnext(url, post_data)
     end
 
     mp.osd_message("upnext failed, no upnext data found err03", 10)
-    msg.error("failed to get upnext data: pos1=" .. tostring(pos1) .. " pos2=" ..tostring(pos2))
+    msg.error("failed to get upnext data: pos1=" .. tostring(pos1) .. " pos2=" .. tostring(pos2))
     return "{}"
 end
 
@@ -196,7 +198,7 @@ local function get_invidious(url)
     url = string.gsub(url, "https://youtu%.be/", opts.invidious_instance .. "/api/v1/videos/")
     msg.debug("Invidious url:" .. url)
 
-    local command = {"wget", "-q", "-O", "-"}
+    local command = { "wget", "-q", "-O", "-" }
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
     end
@@ -230,10 +232,10 @@ local function get_invidious(url)
         msg.verbose("wget and json decode succeeded! (Invidious)")
         for i, v in ipairs(data.recommendedVideos) do
             table.insert(res, {
-                    index=i,
-                    label=v.title .. " - " .. v.author,
-                    file=string.format(opts.youtube_url, v.videoId)
-                })
+                index = i,
+                label = v.title .. " - " .. v.author,
+                file = string.format(opts.youtube_url, v.videoId)
+            })
         end
         mp.osd_message("upnext fetch from Invidious succeeded", 10)
         return res
@@ -248,10 +250,9 @@ local function get_invidious(url)
     return {}
 end
 
-
 local function parse_upnext(json_str, current_video_url)
     if json_str == "{}" then
-      return {}, 0
+        return {}, 0
     end
 
     local data, err = utils.parse_json(json_str)
@@ -263,46 +264,61 @@ local function parse_upnext(json_str, current_video_url)
         return {}, 0
     end
 
+    local skipped_results = {}
     local res = {}
     msg.verbose("wget and json decode succeeded!")
 
     local index = 1
     local autoplay_id = nil
     if data.playerOverlays
-    and data.playerOverlays.playerOverlayRenderer
-    and data.playerOverlays.playerOverlayRenderer.autoplay
-    and data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer then
+        and data.playerOverlays.playerOverlayRenderer
+        and data.playerOverlays.playerOverlayRenderer.autoplay
+        and data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer then
         local title = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoTitle.simpleText
         local video_id = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoId
-        autoplay_id = video_id
-        msg.debug("Found autoplay video")
-        table.insert(res, {
-            index=index,
-            label=title,
-            file=string.format(opts.youtube_url, video_id)
-        })
-        index = index + 1
+        if watched_ids[video_id] == nil then  -- Skip if the video was already watched
+            autoplay_id = video_id
+            table.insert(res, {
+                index = index,
+                label = title,
+                file = string.format(opts.youtube_url, video_id)
+            })
+            index = index + 1
+        else
+            table.insert(skipped_results, {
+                index = index,
+                label = title,
+                file = string.format(opts.youtube_url, video_id)
+            })
+            index = index + 1
+        end
     end
 
     if data.playerOverlays
-    and data.playerOverlays.playerOverlayRenderer
-    and data.playerOverlays.playerOverlayRenderer.endScreen
-    and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
-    and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
+        and data.playerOverlays.playerOverlayRenderer
+        and data.playerOverlays.playerOverlayRenderer.endScreen
+        and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer
+        and data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
     then
         local n = table_size(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results)
-        msg.debug("Found " .. tostring(n) .. " endScreen videos")
         for i, v in ipairs(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results) do
             if v.endScreenVideoRenderer
-            and v.endScreenVideoRenderer.title
-            and v.endScreenVideoRenderer.title.simpleText then
+                and v.endScreenVideoRenderer.title
+                and v.endScreenVideoRenderer.title.simpleText then
                 local title = v.endScreenVideoRenderer.title.simpleText
                 local video_id = v.endScreenVideoRenderer.videoId
-                if video_id ~= autoplay_id then
+
+                if video_id ~= autoplay_id and watched_ids[video_id] == nil then
                     table.insert(res, {
-                        index=index + i,
-                        label=title,
-                        file=string.format(opts.youtube_url, video_id)
+                        index = index + i,
+                        label = title,
+                        file = string.format(opts.youtube_url, video_id)
+                    })
+                elseif watched_ids[video_id] ~= nil then
+                    table.insert(skipped_results, {
+                        index = index + i,
+                        label = title,
+                        file = string.format(opts.youtube_url, video_id)
                     })
                 end
             end
@@ -311,50 +327,69 @@ local function parse_upnext(json_str, current_video_url)
     end
 
     if data.contents
-    and data.contents.twoColumnWatchNextResults
-    and data.contents.twoColumnWatchNextResults.secondaryResults
+        and data.contents.twoColumnWatchNextResults
+        and data.contents.twoColumnWatchNextResults.secondaryResults
     then
         local secondaryResults = data.contents.twoColumnWatchNextResults.secondaryResults
         if secondaryResults.secondaryResults then
             secondaryResults = secondaryResults.secondaryResults
         end
         local n = table_size(secondaryResults.results)
-        msg.debug("Found " .. tostring(n) .. " watchNextResults videos")
         for i, v in ipairs(secondaryResults.results) do
             local compactVideoRenderer = nil
             local watchnextindex = index
             if v.compactAutoplayRenderer
-            and v.compactAutoplayRenderer
-            and v.compactAutoplayRenderer.contents
-            and v.compactAutoplayRenderer.contents.compactVideoRenderer then
+                and v.compactAutoplayRenderer
+                and v.compactAutoplayRenderer.contents
+                and v.compactAutoplayRenderer.contents.compactVideoRenderer then
                 compactVideoRenderer = v.compactAutoplayRenderer.contents.compactVideoRenderer
                 watchnextindex = 0
             elseif v.compactVideoRenderer then
                 compactVideoRenderer = v.compactVideoRenderer
             end
             if compactVideoRenderer
-            and compactVideoRenderer.videoId
-            and compactVideoRenderer.title
-            and compactVideoRenderer.title.simpleText
+                and compactVideoRenderer.videoId
+                and compactVideoRenderer.title
+                and compactVideoRenderer.title.simpleText
             then
                 local title = compactVideoRenderer.title.simpleText
                 local video_id = compactVideoRenderer.videoId
                 local video_url = string.format(opts.youtube_url, video_id)
                 local duplicate = false
+
                 for _, entry in ipairs(res) do
                     if video_url == entry.file then
                         duplicate = true
                     end
                 end
+                if watched_ids[video_id] ~= nil then
+                    if not duplicate then
+                        table.insert(skipped_results, {
+                            index = watchnextindex + i,
+                            label = title,
+                            file = video_url
+                        })
+                    end
+
+                    duplicate = true
+                end
+
                 if not duplicate then
                     table.insert(res, {
-                        index=watchnextindex + i,
-                        label=title,
-                        file=video_url
+                        index = watchnextindex + i,
+                        label = title,
+                        file = video_url
                     })
                 end
             end
         end
+    end
+
+    -- all results where already watched, reset watched videos and use skipped_results
+    if table_size(res) == 0 and table_size(skipped_results) > 0 then
+        msg.debug("All upnext videos are already watched. Watched video list will be reset!")
+        res = skipped_results
+        watched_ids = {}
     end
 
     table.sort(res, function(a, b) return a.index < b.index end)
@@ -363,16 +398,15 @@ local function parse_upnext(json_str, current_video_url)
     return res, table_size(res)
 end
 
-
 local function load_upnext()
     local url = mp.get_property("path")
 
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
 
     if string.find(url, "//youtu.be/") == nil
-    and string.find(url, "//www.youtube.co.uk/") == nil
-    and string.find(url, "//youtube.com/") == nil
-    and string.find(url, "//www.youtube.com/") == nil
+        and string.find(url, "//www.youtube.co.uk/") == nil
+        and string.find(url, "//youtube.com/") == nil
+        and string.find(url, "//www.youtube.com/") == nil
     then
         return {}, 0
     end
@@ -398,6 +432,25 @@ local function on_file_loaded(_)
     local url = mp.get_property("path")
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
     if string.find(url, "youtu") ~= nil then
+        -- Try to add current video ID to watched list
+        -- extract from https://www.youtube.com/watch?v=abcd_1234-ef
+        local video_id = nil
+        local s, e = string.find(url, "v=[^#?!&]+")
+        if s ~= nil then
+            video_id = string.sub(url, s + 2, e)
+        else
+            -- extract from https://youtu.be/abcd_1234-ef
+            local s, e = string.find(url, "youtu.be/[^#?!&]+")
+            if s ~= nil then
+                video_id = string.sub(url, s + 9, e)
+            end
+        end
+
+        if video_id ~= nil then
+            watched_ids[video_id] = true
+            msg.debug("Adding to watched_ids: " .. tostring(video_id))
+        end
+
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
             mp.commandv("loadfile", upnext[1].file, "append")
@@ -423,20 +476,22 @@ local function show_menu()
             return opts.cursor_unselected
         end
     end
+
     local function draw_menu()
         local ass = assdraw.ass_new()
 
         ass:pos(opts.text_padding_x, opts.text_padding_y)
         ass:append(opts.style_ass_tags)
 
-        for i,v in ipairs(upnext) do
-            ass:append(choose_prefix(i)..v.label.."\\N")
+        for i, v in ipairs(upnext) do
+            ass:append(choose_prefix(i) .. v.label .. "\\N")
         end
 
-      local w, h = mp.get_osd_size()
-      if opts.scale_playlist_by_window then w,h = 0, 0 end
-      mp.set_osd_ass(w, h, ass.text)
+        local w, h = mp.get_osd_size()
+        if opts.scale_playlist_by_window then w, h = 0, 0 end
+        mp.set_osd_ass(w, h, ass.text)
     end
+
     local function selected_move(amt)
         selected = selected + amt
         if selected < 1 then
@@ -451,19 +506,20 @@ local function show_menu()
 
     local function destroy()
         timeout:kill()
-        mp.set_osd_ass(0,0,"")
+        mp.set_osd_ass(0, 0, "")
         mp.remove_key_binding("move_up")
         mp.remove_key_binding("move_down")
         mp.remove_key_binding("select")
         mp.remove_key_binding("escape")
         destroyer = nil
     end
+
     timeout = mp.add_periodic_timer(opts.menu_timeout, destroy)
     destroyer = destroy
 
-    mp.add_forced_key_binding(opts.up_binding,     "move_up",   function() selected_move(-1) end, {repeatable=true})
-    mp.add_forced_key_binding(opts.down_binding,   "move_down", function() selected_move(1)  end, {repeatable=true})
-    mp.add_forced_key_binding(opts.select_binding, "select",    function()
+    mp.add_forced_key_binding(opts.up_binding, "move_up", function() selected_move(-1) end, { repeatable = true })
+    mp.add_forced_key_binding(opts.down_binding, "move_down", function() selected_move(1) end, { repeatable = true })
+    mp.add_forced_key_binding(opts.select_binding, "select", function()
         destroy()
         mp.commandv("loadfile", upnext[selected].file, "replace")
     end)
@@ -516,16 +572,15 @@ local function on_dwidth_change(_, value)
     end
 end
 
-
 -- register script message to show menu
 mp.register_script_message("toggle-upnext-menu",
-function()
-    if destroyer ~= nil then
-        destroyer()
-    else
-        show_menu()
-    end
-end)
+    function()
+        if destroyer ~= nil then
+            destroyer()
+        else
+            show_menu()
+        end
+    end)
 
 -- keybind to launch menu
 mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
