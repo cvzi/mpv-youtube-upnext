@@ -24,6 +24,8 @@ local opts = {
     up_binding = "UP",
     down_binding = "DOWN",
     select_binding = "ENTER",
+    append_binding = "SPACE",
+    close_binding = "ESC",
 
     --auto load and add the "upnext" video to the playlist
     auto_add = true,
@@ -31,6 +33,7 @@ local opts = {
     --formatting / cursors
     cursor_selected   = "● ",
     cursor_unselected = "○ ",
+    cursor_appended = "◌ ",
 
     --font size scales by window, if false requires larger font and padding sizes
     scale_playlist_by_window = false,
@@ -88,6 +91,7 @@ local prefered_win_width = nil
 local last_dheight = nil
 local last_dwidth = nil
 local watched_ids = {}
+local appended_to_playlist = {}
 
 local function table_size(t)
     local s = 0
@@ -454,6 +458,7 @@ local function on_file_loaded(_)
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
             mp.commandv("loadfile", upnext[1].file, "append")
+            appended_to_playlist[upnext[1].file] = true
         end
     end
 end
@@ -469,9 +474,12 @@ local function show_menu()
 
     local timeout
     local selected = 1
-    local function choose_prefix(i)
+    local function choose_prefix(i, already_appended)
+
         if i == selected then
             return opts.cursor_selected
+        elseif already_appended then
+            return opts.cursor_appended
         else
             return opts.cursor_unselected
         end
@@ -484,7 +492,9 @@ local function show_menu()
         ass:append(opts.style_ass_tags)
 
         for i, v in ipairs(upnext) do
-            ass:append(choose_prefix(i) .. v.label .. "\\N")
+            if v ~= nil then
+                ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. "\\N")
+            end
         end
 
         local w, h = mp.get_osd_size()
@@ -511,6 +521,7 @@ local function show_menu()
         mp.remove_key_binding("move_down")
         mp.remove_key_binding("select")
         mp.remove_key_binding("escape")
+        mp.remove_key_binding("quit")
         destroyer = nil
     end
 
@@ -523,6 +534,13 @@ local function show_menu()
         destroy()
         mp.commandv("loadfile", upnext[selected].file, "replace")
     end)
+    mp.add_forced_key_binding(opts.append_binding, "append", function()
+        destroy()
+        mp.commandv("loadfile", upnext[selected].file, "append")
+        appended_to_playlist[upnext[selected].file] = true
+        show_menu()
+    end, { repeatable = true })
+    mp.add_forced_key_binding(opts.close_binding, "quit", destroy)
     mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
 
     draw_menu()
