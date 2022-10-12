@@ -3,7 +3,9 @@ A userscript for MPV that allows you to load the up next/recommened youtube vide
 
 ![screenshot](upnext-menu.png)
 
-Toggle the menu with ctrl+u (configurable). Select from the list with the arrow keys (configurable), and press enter (configurable) to select. Menu times out after 10 seconds (configurable.)
+Toggle the menu with `ctrl+u` (configurable). Select from the list with the arrow keys (configurable), and press `Enter` (configurable) to select. Menu times out after 10 seconds (configurable).
+
+Press `Space` to append to the playlist. Close menu with `Escape` or `ctrl+u`.
 
 ## Installation
 
