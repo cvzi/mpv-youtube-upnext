@@ -412,7 +412,31 @@ local function load_upnext()
         and string.find(url, "//youtube.com/") == nil
         and string.find(url, "//www.youtube.com/") == nil
     then
-        return {}, 0
+        -- SVP calls mpv like this:
+        -- mpv '--player-operation-mode=pseudo-gui'
+        -- '--input-ipc-server=mpvpipe' '--no-ytdl' '--audio-file=https://rr3---sn-4g5ednsd.googlevideo.com/videopl....'
+        -- '--force-media-title=Dog Years'
+        -- '--http-header-fields=Referer: https://www.youtube.com/watch?v=AbCdEf_Gh,User-Agent: Mozilla/5.0 ...'
+        -- 'https://rr3---sn-4g5ednsd.googlevideo.com/videoplaybac....'
+        -- We can extract the url from the header field:
+        local headers = mp.get_property("http-header-fields")
+        local i = headers:find("Referer: ") + #"Referer: "
+        if i ~= nil then
+            local j = headers:find(",", i + 15)
+            if j ~= nil then
+                url = headers:sub(i, j - 1)
+            end
+        end
+
+        if string.find(url, "//youtu.be/") == nil
+            and string.find(url, "//www.youtube.co.uk/") == nil
+            and string.find(url, "//youtube.com/") == nil
+            and string.find(url, "//www.youtube.com/") == nil
+        then
+            -- Neither path nor Referer are a youtube link
+            return {}, 0
+        end
+
     end
 
     -- don't fetch the website if it's already cached
