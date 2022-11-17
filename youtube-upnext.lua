@@ -439,6 +439,7 @@ local function load_upnext()
             -- Disable the '--no-ytdl' option from SVP
             mp.set_property_bool("no-ytdl", false)
             mp.set_property_bool("ytdl", true)
+            mp.set_property_bool("autoload-files", false)
         end
 
     end
