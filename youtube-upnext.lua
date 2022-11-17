@@ -435,6 +435,10 @@ local function load_upnext()
         then
             -- Neither path nor Referer are a youtube link
             return {}, 0
+        else
+            -- Disable the '--no-ytdl' option from SVP
+            mp.set_property_bool("no-ytdl", false)
+            mp.set_property_bool("ytdl", true)
         end
 
     end
