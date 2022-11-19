@@ -27,6 +27,9 @@ local opts = {
     append_binding = "SPACE",
     close_binding = "ESC",
 
+    --auto fetch recommended videos when opening a url
+    fetch_on_start = true,
+
     --auto load and add the "upnext" video to the playlist
     auto_add = true,
 
@@ -635,6 +638,8 @@ mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
 
 if opts.auto_add then
     mp.register_event("file-loaded", on_file_loaded)
+elseif opts.fetch_on_start then
+    mp.register_event("file-loaded", load_upnext)
 end
 
 if opts.restore_window_width then
