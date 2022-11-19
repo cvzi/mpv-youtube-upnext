@@ -56,6 +56,10 @@ local opts = {
 
     --other
     menu_timeout = 10,
+
+    --Screen dim when menu is open 0.0 - 1.0 (0 is no dim, 1 is black)
+    curtain_opacity=0.7,
+
     youtube_url = "https://www.youtube.com/watch?v=%s",
 
     -- Fallback Invidious instance, see https://instances.invidio.us/ for alternatives e.g. https://invidious.snopyta.org
@@ -520,6 +524,18 @@ local function show_menu()
     local function draw_menu()
         local ass = assdraw.ass_new()
 
+        local w, h = mp.get_osd_size()
+
+        if opts.curtain_opacity ~= nil and opts.curtain_opacity < 1.0 then
+            -- From https://github.com/christoph-heinrich/mpv-quality-menu/blob/501794bfbef468ee6a61e54fc8821fe5cd72c4ed/quality-menu.lua#L699-L707
+            local alpha = 255 - math.ceil(255 * opts.curtain_opacity)
+            ass.text = string.format('{\\pos(0,0)\\rDefault\\an7\\1c&H000000&\\alpha&H%X&}', alpha)
+            ass:draw_start()
+            ass:rect_cw(0, 0, w, h)
+            ass:draw_stop()
+            ass:new_event()
+        end
+
         ass:pos(opts.text_padding_x, opts.text_padding_y)
         ass:append(opts.style_ass_tags)
 
@@ -529,7 +545,6 @@ local function show_menu()
             end
         end
 
-        local w, h = mp.get_osd_size()
         if opts.scale_playlist_by_window then w, h = 0, 0 end
         mp.set_osd_ass(w, h, ass.text)
     end
