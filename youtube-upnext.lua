@@ -636,12 +636,10 @@ mp.register_script_message("toggle-upnext-menu",
 -- keybind to launch menu
 mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
 
-if opts.fetch_on_start then
-    mp.register_event("file-loaded", load_upnext)
-end
-
 if opts.auto_add then
     mp.register_event("file-loaded", on_file_loaded)
+elseif opts.fetch_on_start then
+    mp.register_event("file-loaded", load_upnext)
 end
 
 if opts.restore_window_width then
