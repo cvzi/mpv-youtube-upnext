@@ -25,8 +25,8 @@ Make sure you have GNU Wget installed.
 There are several websites that offer a binary release of wget for Windows e.g. [here](https://eternallybored.org/misc/wget/),
 it is also included in [MingW](http://mingw.org/) and similar tools.
 
-If you downloaded/installed the wget executable, you have to [add the directory of the wget.exe toyour machine's
-%PATH](https://stackoverflow.com/a/41895179/10367381).
+If you downloaded/installed the wget executable, you have to [add the directory of the wget.exe to your machine's
+%PATH%](https://stackoverflow.com/a/41895179/10367381).
 
 Depending on your setup you may have to set `check_certificate = false` in the lua script or in the config file,
 because some wget versions on Windows seem to have problems with HTTPS/SSL certificates.
@@ -47,6 +47,17 @@ Add the following line to the end of your `input.conf` (change the key if it's a
  Ctrl+u     script-message-to   youtube_upnext   upnext-menu
 
 ```
+
+### SVP
+
+Installation is the same as for normal mpv. You need to install yt-dlp. On Windows you have to
+[add the directory of the yt-dlp.exe to your machine's %PATH%](https://stackoverflow.com/a/41895179/10367381)
+or put yt-dlp.exe into `%APPDATA%\mpv\` e.g. `C:\Users\cvzi\AppData\Roaming\mpv\yt-dlp.exe`.
+
+You need to update yt-dlp occasionally when it stops working.
+
+Unfortunately SVP does not make the quality available to scripts. That means the quality settings that were
+selected in SVP are not preserved when the next video is loaded.
 
 ## Credit
 - I pretty much copied the [mpv-youtube-quality](https://github.com/jgreco/mpv-youtube-quality) script and added wget
