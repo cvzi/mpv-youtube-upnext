@@ -549,6 +549,7 @@ local function show_menu()
         mp.remove_key_binding("move_up")
         mp.remove_key_binding("move_down")
         mp.remove_key_binding("select")
+        mp.remove_key_binding("append")
         mp.remove_key_binding("escape")
         mp.remove_key_binding("quit")
         destroyer = nil
