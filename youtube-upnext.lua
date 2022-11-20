@@ -427,11 +427,14 @@ local function load_upnext()
         -- 'https://rr3---sn-4g5ednsd.googlevideo.com/videoplaybac....'
         -- We can extract the url from the header field:
         local headers = mp.get_property("http-header-fields")
-        local i = headers:find("Referer: ") + #"Referer: "
-        if i ~= nil then
-            local j = headers:find(",", i + 15)
-            if j ~= nil then
-                url = headers:sub(i, j - 1)
+        if headers ~= nil then
+            local i = headers:find("Referer: ")
+            if i ~= nil then
+                i = i + #"Referer: "
+                local j = headers:find(",", i + 15)
+                if j ~= nil then
+                    url = headers:sub(i, j - 1)
+                end
             end
         end
 
