@@ -413,11 +413,10 @@ local function load_upnext()
     local url = mp.get_property("path")
 
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
 
     if string.find(url, "//youtu.be/") == nil
-        and string.find(url, "//www.youtube.co.uk/") == nil
         and string.find(url, "//youtube.com/") == nil
-        and string.find(url, "//www.youtube.com/") == nil
     then
         -- SVP calls mpv like this:
         -- mpv '--player-operation-mode=pseudo-gui'
@@ -439,9 +438,7 @@ local function load_upnext()
         end
 
         if string.find(url, "//youtu.be/") == nil
-            and string.find(url, "//www.youtube.co.uk/") == nil
             and string.find(url, "//youtube.com/") == nil
-            and string.find(url, "//www.youtube.com/") == nil
         then
             -- Neither path nor Referer are a youtube link
             return {}, 0
@@ -474,6 +471,7 @@ end
 local function on_file_loaded(_)
     local url = mp.get_property("path")
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
     if string.find(url, "youtu") ~= nil then
         -- Try to add current video ID to watched list
         -- extract from https://www.youtube.com/watch?v=abcd_1234-ef
