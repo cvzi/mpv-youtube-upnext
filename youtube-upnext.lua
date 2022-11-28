@@ -108,9 +108,15 @@ local function table_size(t)
     return s
 end
 
-local function exec(args)
-    local ret = utils.subprocess({ args = args })
-    return ret.status, ret.stdout, ret
+local function exec(args, capture_stdout, capture_stderr)
+    local ret = mp.command_native({
+        name = "subprocess",
+        playback_only = false,
+        capture_stdout = capture_stdout,
+        capture_stderr = capture_stderr,
+        args = args,
+    })
+    return ret.status, ret.stdout, ret.stderr, ret
 end
 
 local function url_encode(s)
@@ -139,15 +145,17 @@ local function download_upnext(url, post_data)
     end
     table.insert(command, url)
 
-    local es, s, _ = exec(command)
+    local es, s, _, _ = exec(command, true)
 
     if (es ~= 0) or (s == nil) or (s == "") then
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == 127 or es == 9009 then
+        elseif es == -1 or es== -3 or es == 127 or es == 9009 then
+            -- MP_SUBPROCESS_EINIT is -3 which can mean the command was not found:
+            -- https://github.com/mpv-player/mpv/blob/24dcb5d167ba9580119e0b9cc26f79b1d155fcdc/osdep/subprocess-posix.c#L335-L336
             mp.osd_message("upnext failed: wget not found", 10)
-            msg.error("wget/ wget.exe is missing. Please install it or put an executable in your PATH")
+            msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
         else
             mp.osd_message("upnext failed: error=" .. tostring(es), 10)
             msg.error("failed to get upnext list: error=" .. tostring(es))
@@ -215,15 +223,15 @@ local function get_invidious(url)
     end
     table.insert(command, url)
 
-    local es, s, _ = exec(command)
+    local es, s, _, _ = exec(command, true)
 
     if (es ~= 0) or (s == nil) or (s == "") then
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == 127 or es == 9009 then
+        elseif es == -1 or es == -3 or es == 127 or es == 9009 then
             mp.osd_message("upnext failed: wget not found", 10)
-            msg.error("wget/ wget.exe is missing. Please install it or put an executable in your PATH")
+            msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
         else
             mp.osd_message("upnext failed: error=" .. tostring(es), 10)
             msg.error("failed to get invidious: error=" .. tostring(es))
