@@ -1,0 +1,49 @@
+name: TestOnMacOs
+
+on:
+  workflow_dispatch:
+  push:
+  schedule:
+    - cron: "37 10 * * 3"
+
+jobs:
+  TestScript:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install mpv
+        uses: ConorMacBride/install-package@v1.1.0
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+        with:
+          brew: mpv
+
+      - name: Test mpv
+        run: |
+          mpv
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install yt-dlp from pip
+        run: |
+          pip install --upgrade yt-dlp
+          which yt-dlp
+
+      - name: ⏯️ Run mpv with youtube-upnext userscript
+        run: |
+          ytloc=$(which yt-dlp)
+          output=$(mpv --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes" --scripts=youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0" 2>&1)
+          echo $output
+          if [[ $output == *"wget and json decode succeeded"* ]]; then
+            exit 0
+          else
+            echo "Not found: wget and json decode succeeded"
+            exit 1
+          fi
