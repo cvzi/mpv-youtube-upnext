@@ -428,7 +428,9 @@ local function load_upnext()
     local url = mp.get_property("path")
 
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "/shorts/", "/watch?v=") -- Convert shorts to watch?v=.
     url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
+    url = string.gsub(url, "%?feature=share", "") -- Strip possible ?feature=share suffix.
 
     if string.find(url, "//youtu.be/") == nil
         and string.find(url, "//youtube.com/") == nil
@@ -485,8 +487,12 @@ end
 
 local function on_file_loaded(_)
     local url = mp.get_property("path")
+
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "/shorts/", "/watch?v=") -- Convert shorts to watch?v=.
     url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
+    url = string.gsub(url, "%?feature=share", "") -- Strip possible ?feature=share suffix.
+
     if string.find(url, "youtu") ~= nil then
         -- Try to add current video ID to watched list
         -- extract from https://www.youtube.com/watch?v=abcd_1234-ef
