@@ -36,7 +36,8 @@ local opts = {
     --formatting / cursors
     cursor_selected   = "● ",
     cursor_unselected = "○ ",
-    cursor_appended = "◌ ",
+    cursor_appended = "▷ ",
+    cursor_appended_selected = "▶ ",
 
     --font size scales by window, if false requires larger font and padding sizes
     scale_playlist_by_window = false,
@@ -151,7 +152,7 @@ local function download_upnext(url, post_data)
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es== -3 or es == 127 or es == 9009 then
+	elseif es == -1 or es== -3 or es == 127 or es == 9009 then
             -- MP_SUBPROCESS_EINIT is -3 which can mean the command was not found:
             -- https://github.com/mpv-player/mpv/blob/24dcb5d167ba9580119e0b9cc26f79b1d155fcdc/osdep/subprocess-posix.c#L335-L336
             mp.osd_message("upnext failed: wget not found", 10)
@@ -229,7 +230,7 @@ local function get_invidious(url)
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == -3 or es == 127 or es == 9009 then
+	elseif es == -1 or es == -3 or es == 127 or es == 9009 then
             mp.osd_message("upnext failed: wget not found", 10)
             msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
         else
@@ -520,14 +521,12 @@ local function show_menu()
     local timeout
     local selected = 1
     local function choose_prefix(i, already_appended)
+	if i == selected and already_appended then return opts.cursor_appended_selected
+	elseif i == selected then return opts.cursor_selected end
 
-        if i == selected then
-            return opts.cursor_selected
-        elseif already_appended then
-            return opts.cursor_appended
-        else
-            return opts.cursor_unselected
-        end
+	if i ~= selected and already_appended then return opts.cursor_appended
+	elseif i ~= selected then return opts.cursor_unselected end
+	return "> " --shouldn't get here
     end
 
     local function draw_menu()
@@ -592,10 +591,16 @@ local function show_menu()
         mp.commandv("loadfile", upnext[selected].file, "replace")
     end)
     mp.add_forced_key_binding(opts.append_binding, "append", function()
-        destroy()
+    -- prevent appending the same video twice
+    if appended_to_playlist[upnext[selected].file] == true then
+        timeout:kill()
+        timeout:resume()
+        return
+    else
         mp.commandv("loadfile", upnext[selected].file, "append")
         appended_to_playlist[upnext[selected].file] = true
-        show_menu()
+	selected_move(1)
+    end
     end, { repeatable = true })
     mp.add_forced_key_binding(opts.close_binding, "quit", destroy)
     mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
