@@ -543,8 +543,8 @@ local function show_menu()
         local ass = assdraw.ass_new()
 
         local w, h = mp.get_osd_size()
-
-        if opts.curtain_opacity ~= nil and opts.curtain_opacity < 1.0 then
+		
+        if opts.curtain_opacity ~= nil and opts.curtain_opacity ~= 0 and opts.curtain_opacity < 1.0 then
             -- From https://github.com/christoph-heinrich/mpv-quality-menu/blob/501794bfbef468ee6a61e54fc8821fe5cd72c4ed/quality-menu.lua#L699-L707
             local alpha = 255 - math.ceil(255 * opts.curtain_opacity)
             ass.text = string.format('{\\pos(0,0)\\rDefault\\an7\\1c&H000000&\\alpha&H%X&}', alpha)
