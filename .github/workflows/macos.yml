@@ -3,6 +3,7 @@ name: TestOnMacOs
 on:
   workflow_dispatch:
   push:
+  pull:
   schedule:
     - cron: "37 10 * * 3"
 
