@@ -567,6 +567,13 @@ local function show_menu()
         mp.set_osd_ass(w, h, ass.text)
     end
 
+    local function update_dimensions()
+        draw_menu()
+    end
+
+    update_dimensions()
+    mp.observe_property('osd-dimensions', 'native', update_dimensions)
+
     local function selected_move(amt)
         selected = selected + amt
         if selected < 1 then
@@ -588,6 +595,7 @@ local function show_menu()
         mp.remove_key_binding("append")
         mp.remove_key_binding("escape")
         mp.remove_key_binding("quit")
+        mp.unobserve_property(update_dimensions)
         destroyer = nil
     end
 
