@@ -129,6 +129,12 @@ local function url_encode(s)
 end
 
 local function download_upnext(url, post_data)
+    if opts.fetch_on_start or opts.auto_add then
+        msg.info("fetching 'up next' with wget...")
+    else
+	mp.osd_message("fetching 'up next' with wget...", 60)
+    end
+
     local command = { "wget", "-q", "-O", "-" }
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
@@ -510,8 +516,6 @@ local function on_file_loaded(_)
 end
 
 local function show_menu()
-    mp.osd_message("fetching 'up next' with wget...", 60)
-
     local upnext, num_upnext = load_upnext()
     if num_upnext == 0 then
         return
