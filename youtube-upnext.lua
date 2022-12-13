@@ -485,7 +485,7 @@ local function load_upnext()
     return res, n
 end
 
-local function on_file_loaded(_)
+local function on_file_start(_)
     local url = mp.get_property("path")
 
     url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
@@ -543,7 +543,7 @@ local function show_menu()
         local ass = assdraw.ass_new()
 
         local w, h = mp.get_osd_size()
-		
+
         if opts.curtain_opacity ~= nil and opts.curtain_opacity ~= 0 and opts.curtain_opacity < 1.0 then
             -- From https://github.com/christoph-heinrich/mpv-quality-menu/blob/501794bfbef468ee6a61e54fc8821fe5cd72c4ed/quality-menu.lua#L699-L707
             local alpha = 255 - math.ceil(255 * opts.curtain_opacity)
@@ -684,9 +684,9 @@ mp.register_script_message("toggle-upnext-menu",
 mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
 
 if opts.auto_add then
-    mp.register_event("file-loaded", on_file_loaded)
+    mp.register_event("start-file", on_file_start)
 elseif opts.fetch_on_start then
-    mp.register_event("file-loaded", load_upnext)
+    mp.register_event("start-file", load_upnext)
 end
 
 if opts.restore_window_width then
