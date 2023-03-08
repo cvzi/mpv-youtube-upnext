@@ -36,11 +36,15 @@ jobs:
         run: |
           pip install --upgrade yt-dlp
           which yt-dlp
+          
+      - name: Test yt-dlp
+        run: |
+          yt-dlp --version
 
       - name: ⏯️ Run mpv with youtube-upnext userscript
         run: |
           ytloc=$(which yt-dlp)
-          output=$(mpv --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes" --scripts=youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0" 2>&1)
+          output=$(mpv --script-opts="ytdl_hook-ytdl_path='$ytloc',youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes" --scripts=youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0" 2>&1)
           echo $output
           if [[ $output == *"wget and json decode succeeded"* ]]; then
             exit 0
