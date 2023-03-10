@@ -49,7 +49,7 @@ local opts = {
     --these styles will be used for the whole playlist. More specific styling will need to be hacked in
     --
     --(a monospaced font is recommended but not required)
-    style_ass_tags = "{\\fnmonospace}",
+    style_ass_tags = "{\\fs25}",
 
     --paddings for top left corner
     text_padding_x = 5,
@@ -132,7 +132,7 @@ local function download_upnext(url, post_data)
     if opts.fetch_on_start or opts.auto_add then
         msg.info("fetching 'up next' with wget...")
     else
-	mp.osd_message("fetching 'up next' with wget...", 60)
+        mp.osd_message("fetching 'up next' with wget...", 60)
     end
 
     local command = { "wget", "-q", "-O", "-" }
@@ -158,7 +158,7 @@ local function download_upnext(url, post_data)
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-	elseif es == -1 or es== -3 or es == 127 or es == 9009 then
+        elseif es == -1 or es== -3 or es == 127 or es == 9009 then
             -- MP_SUBPROCESS_EINIT is -3 which can mean the command was not found:
             -- https://github.com/mpv-player/mpv/blob/24dcb5d167ba9580119e0b9cc26f79b1d155fcdc/osdep/subprocess-posix.c#L335-L336
             mp.osd_message("upnext failed: wget not found", 10)
@@ -236,7 +236,7 @@ local function get_invidious(url)
         if es == 5 then
             mp.osd_message("upnext failed: wget does not support HTTPS", 10)
             msg.error("wget is missing certificates, disable check-certificate in userscript options")
-	elseif es == -1 or es == -3 or es == 127 or es == 9009 then
+        elseif es == -1 or es == -3 or es == 127 or es == 9009 then
             mp.osd_message("upnext failed: wget not found", 10)
             msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
         else
@@ -515,7 +515,7 @@ local function on_file_start(_)
 
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
-            mp.commandv("loadfile", upnext[1].file, "append")
+            mp.commandv("loadfile", upnext[1].file .. "# " .. upnext[1].label, "append")
             appended_to_playlist[upnext[1].file] = true
         end
     end
@@ -531,12 +531,13 @@ local function show_menu()
     local timeout
     local selected = 1
     local function choose_prefix(i, already_appended)
-	if i == selected and already_appended then return opts.cursor_appended_selected
-	elseif i == selected then return opts.cursor_selected end
+        if i == selected and already_appended then return opts.cursor_appended_selected
+        elseif i == selected then return opts.cursor_selected end
 
-	if i ~= selected and already_appended then return opts.cursor_appended
-	elseif i ~= selected then return opts.cursor_unselected end
-	return "> " --shouldn't get here
+        if i ~= selected and already_appended then return opts.cursor_appended
+        elseif i ~= selected then return opts.cursor_unselected end
+
+        return "> " --shouldn't get here
     end
 
     local function draw_menu()
@@ -606,7 +607,11 @@ local function show_menu()
     mp.add_forced_key_binding(opts.down_binding, "move_down", function() selected_move(1) end, { repeatable = true })
     mp.add_forced_key_binding(opts.select_binding, "select", function()
         destroy()
-        mp.commandv("loadfile", upnext[selected].file, "replace")
+        mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append-play")
+        local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
+        local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
+        mp.commandv("playlist-move",  playlist_index_newfile, playlist_index_current + 1)
+        mp.commandv("playlist-play-index",  playlist_index_current + 1)
     end)
     mp.add_forced_key_binding(opts.append_binding, "append", function()
     -- prevent appending the same video twice
@@ -615,9 +620,9 @@ local function show_menu()
         timeout:resume()
         return
     else
-        mp.commandv("loadfile", upnext[selected].file, "append")
+        mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append")
         appended_to_playlist[upnext[selected].file] = true
-	selected_move(1)
+        selected_move(1)
     end
     end, { repeatable = true })
     mp.add_forced_key_binding(opts.close_binding, "quit", destroy)
