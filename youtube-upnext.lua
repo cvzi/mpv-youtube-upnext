@@ -79,7 +79,12 @@ local opts = {
     -- For example "C:\\Users\\Username\\cookies.txt"
     -- Or "C:/Users/Username/cookies.txt"
     -- Alternatively you can set this from the command line with --ytdl-raw-options=cookies=file.txt
-    cookies = ""
+    cookies = "",
+
+    -- When a video is selected from the menu, the new video can be appended to the playlist
+    -- or the playlist can be cleared and replaced with only the selected video.
+    -- If true, the video will be appended to the playlist. If false, the playlist will be cleared.
+    keep_playlist_on_select = true,
 }
 (require 'mp.options').read_options(opts, "youtube-upnext")
 
@@ -607,11 +612,15 @@ local function show_menu()
     mp.add_forced_key_binding(opts.down_binding, "move_down", function() selected_move(1) end, { repeatable = true })
     mp.add_forced_key_binding(opts.select_binding, "select", function()
         destroy()
-        mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append-play")
-        local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-        local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-        mp.commandv("playlist-move",  playlist_index_newfile, playlist_index_current + 1)
-        mp.commandv("playlist-play-index",  playlist_index_current + 1)
+        if opts.keep_playlist_on_select then
+            mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append-play")
+            local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
+            local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
+            mp.commandv("playlist-move",  playlist_index_newfile, playlist_index_current + 1)
+            mp.commandv("playlist-play-index",  playlist_index_current + 1)
+        else
+            mp.commandv("loadfile", upnext[selected].file, "replace")
+        end
     end)
     mp.add_forced_key_binding(opts.append_binding, "append", function()
     -- prevent appending the same video twice
