@@ -490,6 +490,11 @@ local function load_upnext()
     return res, n
 end
 
+local function add_to_playlist(path, title, flag)
+    local playlist = "memory://#EXTM3U\n#EXTINF:0," .. title .. "\n" .. path
+    mp.commandv("loadlist", playlist, flag)
+end
+
 local function on_file_start(_)
     local url = mp.get_property("path")
 
@@ -520,7 +525,7 @@ local function on_file_start(_)
 
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
-            mp.commandv("loadfile", upnext[1].file .. "# " .. upnext[1].label, "append")
+            add_to_playlist(upnext[1].file, upnext[1].label, "append")
             appended_to_playlist[upnext[1].file] = true
         end
     end
@@ -613,13 +618,13 @@ local function show_menu()
     mp.add_forced_key_binding(opts.select_binding, "select", function()
         destroy()
         if opts.keep_playlist_on_select then
-            mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append-play")
+            add_to_playlist(upnext[selected].file, upnext[selected].label, "append-play")
             local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
             local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
             mp.commandv("playlist-move",  playlist_index_newfile, playlist_index_current + 1)
             mp.commandv("playlist-play-index",  playlist_index_current + 1)
         else
-            mp.commandv("loadfile", upnext[selected].file, "replace")
+            add_to_playlist(upnext[selected].file, upnext[selected].label, "replace")
         end
     end)
     mp.add_forced_key_binding(opts.append_binding, "append", function()
@@ -629,7 +634,7 @@ local function show_menu()
         timeout:resume()
         return
     else
-        mp.commandv("loadfile", upnext[selected].file .. "# " .. upnext[selected].label, "append")
+        add_to_playlist(upnext[selected].file, upnext[selected].label, "append")
         appended_to_playlist[upnext[selected].file] = true
         selected_move(1)
     end
