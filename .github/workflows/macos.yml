@@ -17,7 +17,7 @@ jobs:
       - name: Install mpv
         run: |
           brew install ffmpeg luajit mujs uchardet vapoursynth
-          brew install --ignore-dependencies --HEAD mpv
+          brew install --ignore-dependencies mpv
         env:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
           HOMEBREW_NO_AUTO_UPDATE: 1
