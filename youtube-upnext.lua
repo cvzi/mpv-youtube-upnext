@@ -48,8 +48,8 @@ local opts = {
     --undeclared tags will use default osd settings
     --these styles will be used for the whole playlist. More specific styling will need to be hacked in
     --
-    --(a monospaced font is recommended but not required)
-    style_ass_tags = "{\\fs25}",
+    --(a monospaced font is recommended but not required e.g. {\\fnmonospace\\fs25} )
+    style_ass_tags = "",
 
     --paddings for top left corner
     text_padding_x = 5,
