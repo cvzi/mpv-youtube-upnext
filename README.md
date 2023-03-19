@@ -27,9 +27,9 @@ The location of the scripts directory on Windows is `%APPDATA%\mpv\scripts` e.g.
 
 $\textcolor{#D00000}{\textsf{Microsoft ships an old version of cURL with known vulnerabilities.}}$
 You are encouraged to install a newer version of cURL:
-
-Get the official cURL. releases at [cURL.se](https://curl.se/windows/).
-[git for windows](https://git-scm.com/) includes a version of cURL.
+* Official cURL releases https://curl.se/windows/
+* [Chocolatey package](https://community.chocolatey.org/packages/curl)
+* [git for windows](https://git-scm.com/) includes a version of cURL
 
 If you downloaded/installed the curl/wget executable, you have to [add the directory of the curl.exe/wget.exe to your machine's
 %PATH%](https://stackoverflow.com/a/41895179/10367381).
