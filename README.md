@@ -1,7 +1,7 @@
 # youtube-upnext
 A userscript for MPV that allows you to load the up next/recommened youtube video on the fly, as though you were using the web player.
 
-![screenshot](upnext-menu.png)
+![screenshot](screenshot_menu.png)
 
 Toggle the menu with `ctrl+u` (configurable). Select from the list with the arrow keys (configurable), and press `Enter` (configurable) to select. Menu times out after 10 seconds (configurable).
 
@@ -30,6 +30,27 @@ If you downloaded/installed the wget executable, you have to [add the directory 
 
 Depending on your setup you may have to set `check_certificate = false` in the lua script or in the config file,
 because some wget versions on Windows seem to have problems with HTTPS/SSL certificates.
+
+### [uosc](https://github.com/tomasklaen/uosc) menu integration
+
+If you want to add the upnext menu to uosc, you need to add one of the following line to your `input.conf`.
+If you use the line starting with `#` it just creates an entry in the uosc menu.
+If you use the second line, it also creates a keyboard shortcut to open the menu.
+Replace `u` with the key of your choice:
+
+```
+#           script-message-to youtube_upnext menu     #! Youtube Recommendations
+OR
+u           script-message-to youtube_upnext menu     #! Youtube Recommendations
+```
+
+If you want it to appear in a submenu, replace `Youtube Recommendations` with e.g. `Utils > Youtube Recommendations`
+
+
+Note: If you're using the default menu of uosc and you don't have the uosc menu defined in `input.conf`, you first need to create
+a menu configuration. You can find an example at https://github.com/tomasklaen/uosc#examples
+
+![screenshot of uosc](screenshot_uosc.webp)
 
 ### mpv.net:
 The script folder for mpv.net is:
