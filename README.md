@@ -17,23 +17,26 @@ optional, copy the config file:
 
     cp youtube-upnext.conf ~/.config/mpv/script-opts/
 
+
+Make sure you have cURL or GNU Wget installed.
+cURL is included in Windows 10+, macOS, Android and many Linux distributions.
+
 ### Windows:
 
 The location of the scripts directory on Windows is `%APPDATA%\mpv\scripts` e.g. `C:\Users\cvzi\AppData\Roaming\mpv\scripts`
 
-Make sure you have GNU Wget installed.
-There are several websites that offer a binary release of wget for Windows e.g. [here](https://eternallybored.org/misc/wget/),
-it is also included in [MingW](http://mingw.org/) and similar tools.
+$\textcolor{#D00000}{\textsf{Microsoft ships an old version of cURL with known vulnerabilities.}}$
+You are encouraged to install a newer version of cURL:
 
-If you downloaded/installed the wget executable, you have to [add the directory of the wget.exe to your machine's
+Get the official cURL. releases at [cURL.se](https://curl.se/windows/).
+[git for windows](https://git-scm.com/) includes a version of cURL.
+
+If you downloaded/installed the curl/wget executable, you have to [add the directory of the curl.exe/wget.exe to your machine's
 %PATH%](https://stackoverflow.com/a/41895179/10367381).
-
-Depending on your setup you may have to set `check_certificate = false` in the lua script or in the config file,
-because some wget versions on Windows seem to have problems with HTTPS/SSL certificates.
 
 ### [uosc](https://github.com/tomasklaen/uosc) menu integration
 
-If you want to add the upnext menu to uosc, you need to add one of the following line to your `input.conf`.
+If you want to add the upnext menu to **uosc**, you need to add one of the following line to your `input.conf`.
 If you use the line starting with `#` it just creates an entry in the uosc menu.
 If you use the second line, it also creates a keyboard shortcut to open the menu.
 Replace `u` with the key of your choice:
