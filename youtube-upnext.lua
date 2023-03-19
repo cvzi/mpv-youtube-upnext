@@ -10,8 +10,9 @@
 --
 -- Bound to ctrl-u by default.
 --
--- Requires wget/wget.exe in PATH. On Windows you may need to set check_certificate
--- to false, otherwise wget.exe might not be able to download the youtube website.
+-- Requires curl/curl.exe or wget/wget.exe in PATH. On Windows with wget you may need
+-- to set check_certificate to false, otherwise wget.exe might not be able to
+-- download the youtube website.
 
 local mp = require "mp"
 local utils = require "mp.utils"
@@ -72,7 +73,7 @@ local opts = {
     check_certificate = true,
 
     -- Use a cookies file
-    -- (Same as youtube-dl --cookies or wget --load-cookies)
+    -- (Same as youtube-dl --cookies or curl -b or wget --load-cookies)
     -- If you don't set this, the script will try to create a temporary cookies file for you
     -- On Windows you need to use a double blackslash or a single fordwardslash
     -- For example "C:\\Users\\Username\\cookies.txt"
@@ -150,44 +151,61 @@ end
 
 local function download_upnext(url, post_data)
     if opts.fetch_on_start or opts.auto_add then
-        msg.info("fetching 'up next' with wget...")
+        msg.info("fetching 'up next' with curl...")
     else
-        mp.osd_message("fetching 'up next' with wget...", 60)
+        mp.osd_message("fetching 'up next' with curl...", 60)
     end
 
-    local command = {"wget", "-q", "-O", "-"}
-    if not opts.check_certificate then
-        table.insert(command, "--no-check-certificate")
-    end
+    local command = {"curl", "--silent", "--location"}
     if post_data then
-        table.insert(command, "--post-data")
+        table.insert(command, "--request")
+        table.insert(command, "POST")
+        table.insert(command, "--data")
         table.insert(command, post_data)
     end
-    if opts.cookies then
-        table.insert(command, "--load-cookies")
+    if opts.cookies == nil or opts.cookies == "" then
+        table.insert(command, "--cookie-jar")
         table.insert(command, opts.cookies)
-        table.insert(command, "--save-cookies")
+        table.insert(command, "--cookie")
         table.insert(command, opts.cookies)
-        table.insert(command, "--keep-session-cookies")
     end
     table.insert(command, url)
 
     local es, s, _, _ = exec(command, true)
 
     if (es ~= 0) or (s == nil) or (s == "") then
-        if es == 5 then
-            mp.osd_message("upnext failed: wget does not support HTTPS", 10)
-            msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == -3 or es == 127 or es == 9009 then
+        if es == -1 or es == -3 or es == 127 or es == 9009 then
             -- MP_SUBPROCESS_EINIT is -3 which can mean the command was not found:
             -- https://github.com/mpv-player/mpv/blob/24dcb5d167ba9580119e0b9cc26f79b1d155fcdc/osdep/subprocess-posix.c#L335-L336
-            mp.osd_message("upnext failed: wget not found", 10)
-            msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
+            msg.debug("curl not found, trying wget")
+            local command_wget = {"wget", "-q", "-O", "-"}
+            if not opts.check_certificate then
+                table.insert(command_wget, "--no-check-certificate")
+            end
+            if post_data then
+                table.insert(command_wget, "--post-data")
+                table.insert(command_wget, post_data)
+            end
+            if opts.cookies then
+                table.insert(command_wget, "--load-cookies")
+                table.insert(command_wget, opts.cookies)
+                table.insert(command_wget, "--save-cookies")
+                table.insert(command_wget, opts.cookies)
+                table.insert(command_wget, "--keep-session-cookies")
+            end
+            table.insert(command_wget, url)
+            es, s, _, _ = exec(command, true)
+            if (es ~= 0) or (s == nil) or (s == "") then
+                mp.osd_message("upnext failed: curl was not found, wget failed", 10)
+                return "{}"
+            end
         else
             mp.osd_message("upnext failed: error=" .. tostring(es), 10)
             msg.error("failed to get upnext list: error=" .. tostring(es))
+            msg.error("s: " .. tostring(s))
+            msg.debug("exec (async): " .. table.concat(command, " "))
+            return "{}"
         end
-        return "{}"
     end
 
     local consent_pos = s:find('action="https://consent.youtube.com/s"')
@@ -246,7 +264,7 @@ local function get_invidious(url)
     url = string.gsub(url, "https://youtu%.be/", opts.invidious_instance .. "/api/v1/videos/")
     msg.debug("Invidious url:" .. url)
 
-    local command = {"wget", "-q", "-O", "-"}
+    local command = {"curl", "--silent", "--location"}
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
     end
@@ -255,17 +273,24 @@ local function get_invidious(url)
     local es, s, _, _ = exec(command, true)
 
     if (es ~= 0) or (s == nil) or (s == "") then
-        if es == 5 then
-            mp.osd_message("upnext failed: wget does not support HTTPS", 10)
-            msg.error("wget is missing certificates, disable check-certificate in userscript options")
-        elseif es == -1 or es == -3 or es == 127 or es == 9009 then
-            mp.osd_message("upnext failed: wget not found", 10)
-            msg.error("wget/wget.exe is missing. Please install it or put an executable in your PATH")
+        if es == -1 or es == -3 or es == 127 or es == 9009 then
+            msg.debug("curl not found, trying wget")
+            local command_wget = {"wget", "-q", "-O", "-"}
+            if not opts.check_certificate then
+                table.insert(command_wget, "--no-check-certificate")
+            end
+            table.insert(command_wget, url)
+            es, s, _, _ = exec(command_wget, true)
+            if (es ~= 0) or (s == nil) or (s == "") then
+                mp.osd_message("upnext failed: curl was not found, wget failed", 10)
+                return {}
+            end
         else
             mp.osd_message("upnext failed: error=" .. tostring(es), 10)
             msg.error("failed to get invidious: error=" .. tostring(es))
+            return {}
         end
-        return {}
+
     end
 
     local data, err = utils.parse_json(s)
@@ -277,7 +302,7 @@ local function get_invidious(url)
 
     if data.recommendedVideos then
         local res = {}
-        msg.verbose("wget and json decode succeeded! (Invidious)")
+        msg.verbose("downloaded and decoded json successfully (Invidious)")
         for i, v in ipairs(data.recommendedVideos) do
             table.insert(
                 res,
@@ -317,7 +342,7 @@ local function parse_upnext(json_str, current_video_url)
 
     local skipped_results = {}
     local res = {}
-    msg.verbose("wget and json decode succeeded!")
+    msg.verbose("downloaded and decoded json successfully")
 
     local index = 1
     local autoplay_id = nil
