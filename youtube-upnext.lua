@@ -149,6 +149,24 @@ local function url_encode(s)
     return string.gsub(s, "([^0-9a-zA-Z!'()*._~-])", repl)
 end
 
+local function extract_videoid(url)
+    local video_id = nil
+    if string.find(url, "youtu") ~= nil then
+        -- extract vidoe id from https://www.youtube.com/watch?v=abcd_1234-ef
+        local s, e = string.find(url, "v=[^#?!&]+")
+        if s ~= nil then
+            video_id = string.sub(url, s + 2, e)
+        else
+            -- extract from https://youtu.be/abcd_1234-ef
+            local s2, e2 = string.find(url, "youtu.be/[^#?!&]+")
+            if s2 ~= nil then
+                video_id = string.sub(url, s2 + 9, e2)
+            end
+        end
+    end
+    return video_id
+end
+
 local function download_upnext(url, post_data)
     if opts.fetch_on_start or opts.auto_add then
         msg.info("fetching 'up next' with curl...")
@@ -570,17 +588,7 @@ local function on_file_start(_)
     if string.find(url, "youtu") ~= nil then
         -- Try to add current video ID to watched list
         -- extract from https://www.youtube.com/watch?v=abcd_1234-ef
-        local video_id = nil
-        local s, e = string.find(url, "v=[^#?!&]+")
-        if s ~= nil then
-            video_id = string.sub(url, s + 2, e)
-        else
-            -- extract from https://youtu.be/abcd_1234-ef
-            local s2, e2 = string.find(url, "youtu.be/[^#?!&]+")
-            if s2 ~= nil then
-                video_id = string.sub(url, s2 + 9, e2)
-            end
-        end
+        local video_id = extract_videoid(url)
 
         if video_id ~= nil then
             watched_ids[video_id] = true
@@ -712,6 +720,7 @@ local function show_menu()
                 local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
                 mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
                 mp.commandv("playlist-play-index", playlist_index_current + 1)
+                appended_to_playlist[upnext[selected].file] = true
             else
                 add_to_playlist(upnext[selected].file, upnext[selected].label, "replace")
             end
@@ -830,10 +839,14 @@ local function open_uosc_menu()
 
     for i, v in ipairs(upnext) do
         if v ~= nil then
+            local hint = tostring(i)
+            if appended_to_playlist[v.file] == true then
+                hint = '▷ ' .. hint
+            end
             local video_item = {
                 title = v.label,
                 icon = "movie",
-                hint = tostring(i),
+                hint = hint,
                 keep_open = opts.uosc_keep_menu_open
             }
             if opts.uosc_entry_action == "submenu" then
@@ -941,6 +954,7 @@ mp.register_script_message(
         local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
         mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
         mp.commandv("playlist-play-index", playlist_index_current + 1)
+        appended_to_playlist[url] = true
     end
 )
 
@@ -958,6 +972,7 @@ mp.register_script_message(
         local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
         local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
         mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
+        appended_to_playlist[url] = true
     end
 )
 
@@ -965,5 +980,6 @@ mp.register_script_message(
     "append",
     function(url, label)
         add_to_playlist(url, label, "append")
+        appended_to_playlist[url] = true
     end
 )
