@@ -49,9 +49,17 @@ u           script-message-to youtube_upnext menu     #! Youtube Recommendations
 
 If you want it to appear in a submenu, replace `Youtube Recommendations` with e.g. `Utils > Youtube Recommendations`
 
-
-Note: If you're using the default menu of uosc and you don't have the uosc menu defined in `input.conf`, you first need to create
+<ins>Note:</ins> If you're using the default menu of uosc and you don't have the uosc menu defined in `input.conf`, you first need to create
 a menu configuration. You can find an example at https://github.com/tomasklaen/uosc#examples
+
+If you want an entry in the controls bar of uosc, you can add the following to the `controls=` entry in your `uosc.conf`:
+
+```
+<stream>command:queue_play_next:script-message-to youtube_upnext menu?Up Next
+```
+
+* Pick your desired title instead of `Up Next`
+* Pick another icon instead of `queue_play_next` from [Google Material Icons](https://fonts.google.com/icons?selected=Material+Icons)
 
 ![screenshot of uosc](screenshot_uosc.webp)
 
