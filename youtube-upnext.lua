@@ -63,8 +63,8 @@ local opts = {
 
     youtube_url = "https://www.youtube.com/watch?v=%s",
 
-    -- Fallback Invidious instance, see https://instances.invidio.us/ for alternatives e.g. https://invidious.snopyta.org
-    invidious_instance = "https://inv.riverside.rocks",
+    -- Fallback Invidious instance, see https://api.invidious.io/ for alternatives
+    invidious_instance = "https://inv.tux.pizza",
 
     -- Keep the width of the window the same when the next video is played
     restore_window_width = false,
