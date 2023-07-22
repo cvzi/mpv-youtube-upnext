@@ -99,6 +99,17 @@ local opts = {
 
     -- Use json.lua library instead of mpv's built-in json parser
     use_json_lua = false,
+
+    -- Don't play/append videos that are shorter than this time. Format is "HH:MM:SS" or "MM:SS"
+    skip_shorter_than = "",
+
+    -- Don't play/append videos that are longer than this time. Format is "HH:MM:SS" or "MM:SS"
+    skip_longer_than = "",
+
+    -- Don't show the videos that are too short or too long in the menu
+    hide_skipped_videos = false,
+
+
 }
 (require "mp.options").read_options(opts, "youtube-upnext")
 
@@ -153,6 +164,28 @@ local function url_encode(s)
     return string.gsub(s, "([^0-9a-zA-Z!'()*._~-])", repl)
 end
 
+local function parse_yt_time(hour_min_second_string)
+    local hour, min, sec = string.match(hour_min_second_string, "(%d+):(%d+):(%d+)")
+    if hour == nil then
+        min, sec = string.match(hour_min_second_string, "(%d+):(%d+)")
+    end
+    if min == nil then
+        sec = string.match(hour_min_second_string, "(%d+)")
+    end
+    return (hour or 0) * 3600 + (min or 0) * 60 + (sec or 0)
+end
+
+local function create_yt_time(seconds)
+    local hour = math.floor(seconds / 3600)
+    local min = math.floor((seconds - hour * 3600) / 60)
+    local sec = math.floor(seconds - hour * 3600 - min * 60)
+
+    if hour > 0 then
+        return string.format("%02d:%02d:%02d", hour, min, sec)
+    end
+    return string.format("%02d:%02d", min, sec)
+end
+
 local function extract_videoid(url)
     local video_id = nil
     if string.find(url, "youtu") ~= nil then
@@ -170,6 +203,22 @@ local function extract_videoid(url)
     end
     return video_id
 end
+
+local skip_shorter_than = -1
+if opts.skip_shorter_than ~= nil and opts.skip_shorter_than ~= "" then
+    skip_shorter_than = parse_yt_time(opts.skip_shorter_than)
+end
+local skip_longer_than = -1
+if opts.skip_longer_than ~= nil and opts.skip_longer_than ~= "" then
+    skip_longer_than = parse_yt_time(opts.skip_longer_than)
+end
+
+if skip_longer_than > -1 and skip_shorter_than > -1 and skip_longer_than < skip_shorter_than then
+    msg.error("skip_longer_than must be greater than skip_shorter_than")
+    skip_longer_than = -1
+    skip_shorter_than = -1
+end
+
 
 local function download_upnext(url, post_data)
     if opts.fetch_on_start or opts.auto_add then
@@ -336,12 +385,17 @@ local function get_invidious(url)
         local res = {}
         msg.verbose("downloaded and decoded json successfully (Invidious)")
         for i, v in ipairs(data.recommendedVideos) do
+            local duration = -1
+            if v.lengthSeconds ~= nil then
+                duration = tonumber(v.lengthSeconds)
+            end
             table.insert(
                 res,
                 {
                     index = i,
                     label = v.title .. " - " .. v.author,
-                    file = string.format(opts.youtube_url, v.videoId)
+                    file = string.format(opts.youtube_url, v.videoId),
+                    length = duration
                 }
             )
         end
@@ -392,9 +446,17 @@ local function parse_upnext(json_str, current_video_url)
             data.playerOverlays.playerOverlayRenderer.autoplay and
             data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer
      then
-        local title =
-            data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoTitle.simpleText
-        local video_id = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer.videoId
+        local playerOverlayAutoplayRenderer = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer
+        local title = playerOverlayAutoplayRenderer.videoTitle.simpleText
+        local video_id = playerOverlayAutoplayRenderer.videoId
+        local duration = -1
+        if playerOverlayAutoplayRenderer.thumbnailOverlays and playerOverlayAutoplayRenderer.thumbnailOverlays[1] and
+            playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer and
+            playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer.text
+        then
+            duration = parse_yt_time(playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer.text.simpleText)
+        end
+
         if watched_ids[video_id] == nil then -- Skip if the video was already watched
             autoplay_id = video_id
             table.insert(
@@ -402,7 +464,8 @@ local function parse_upnext(json_str, current_video_url)
                 {
                     index = index,
                     label = title,
-                    file = string.format(opts.youtube_url, video_id)
+                    file = string.format(opts.youtube_url, video_id),
+                    length = duration
                 }
             )
             index = index + 1
@@ -412,7 +475,8 @@ local function parse_upnext(json_str, current_video_url)
                 {
                     index = index,
                     label = title,
-                    file = string.format(opts.youtube_url, video_id)
+                    file = string.format(opts.youtube_url, video_id),
+                    length = duration
                 }
             )
             index = index + 1
@@ -430,6 +494,10 @@ local function parse_upnext(json_str, current_video_url)
             if v.endScreenVideoRenderer and v.endScreenVideoRenderer.title and v.endScreenVideoRenderer.title.simpleText then
                 local title = v.endScreenVideoRenderer.title.simpleText
                 local video_id = v.endScreenVideoRenderer.videoId
+                local duration = -1
+                if v.endScreenVideoRenderer.lengthText then
+                    duration = parse_yt_time(v.endScreenVideoRenderer.lengthText.simpleText)
+                end
 
                 if video_id ~= autoplay_id and watched_ids[video_id] == nil then
                     table.insert(
@@ -437,7 +505,8 @@ local function parse_upnext(json_str, current_video_url)
                         {
                             index = index + i,
                             label = title,
-                            file = string.format(opts.youtube_url, video_id)
+                            file = string.format(opts.youtube_url, video_id),
+                            length = duration
                         }
                     )
                 elseif watched_ids[video_id] ~= nil then
@@ -446,7 +515,8 @@ local function parse_upnext(json_str, current_video_url)
                         {
                             index = index + i,
                             label = title,
-                            file = string.format(opts.youtube_url, video_id)
+                            file = string.format(opts.youtube_url, video_id),
+                            length = duration
                         }
                     )
                 end
@@ -481,6 +551,11 @@ local function parse_upnext(json_str, current_video_url)
              then
                 local title = compactVideoRenderer.title.simpleText
                 local video_id = compactVideoRenderer.videoId
+                local duration = -1
+                if compactVideoRenderer.lengthText then
+                    duration = parse_yt_time(compactVideoRenderer.lengthText.simpleText)
+                end
+
                 local video_url = string.format(opts.youtube_url, video_id)
                 local duplicate = false
 
@@ -496,7 +571,8 @@ local function parse_upnext(json_str, current_video_url)
                             {
                                 index = watchnextindex + i,
                                 label = title,
-                                file = video_url
+                                file = video_url,
+                                length = duration
                             }
                         )
                     end
@@ -510,7 +586,8 @@ local function parse_upnext(json_str, current_video_url)
                         {
                             index = watchnextindex + i,
                             label = title,
-                            file = video_url
+                            file = video_url,
+                            length = duration
                         }
                     )
                 end
@@ -595,8 +672,11 @@ local function load_upnext()
     return res, n
 end
 
-local function add_to_playlist(path, title, flag)
-    local playlist = "memory://#EXTM3U\n#EXTINF:0," .. title .. "\n" .. path
+local function add_to_playlist(path, title, length, flag)
+    if length ~= nil or length < 0 then
+        length = 0
+    end
+    local playlist = "memory://#EXTM3U\n#EXTINF:" .. tostring(length) .. "," .. title .. "\n" .. path
     mp.commandv("loadlist", playlist, flag)
 end
 
@@ -620,7 +700,30 @@ local function on_file_start(_)
 
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
-            add_to_playlist(upnext[1].file, upnext[1].label, "append")
+
+            if skip_shorter_than > -1 or skip_longer_than > -1 then
+                -- Append first video that is not too long or too short
+                for _, v in ipairs(upnext) do
+                    if v ~= nil then
+                        if v.length ~= nil and v.length > 0 then
+                            if skip_shorter_than > -1 and v.length < skip_shorter_than then
+                                goto continue
+                            end
+                            if skip_longer_than > -1 and v.length > skip_longer_than then
+                                goto continue
+                            end
+                            -- Append first video
+                            add_to_playlist(v.file, v.label, v.length, "append")
+                            appended_to_playlist[v.file] = true
+                            return
+                        end
+                    end
+                    ::continue::
+                end
+                msg.warn("No video between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found")
+            end
+            -- Append first video
+            add_to_playlist(upnext[1].file, upnext[1].label, upnext[1].length, "append")
             appended_to_playlist[upnext[1].file] = true
         end
     end
@@ -669,9 +772,39 @@ local function show_menu()
         ass:pos(opts.text_padding_x, opts.text_padding_y)
         ass:append(opts.style_ass_tags)
 
+        local skipped = 0
+        local entries = 0
         for i, v in ipairs(upnext) do
             if v ~= nil then
-                ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. "\\N")
+                local duration = ""
+                if v.length ~= nil and v.length > 0 then
+                    duration = " " .. create_yt_time(v.length)
+
+                    if opts.hide_skipped_videos then
+                        if skip_shorter_than > -1 and v.length < skip_shorter_than then
+                            skipped = skipped + 1
+                            goto continue
+                        end
+                        if skip_longer_than > -1 and v.length > skip_longer_than then
+                            skipped = skipped + 1
+                            goto continue
+                        end
+                    end
+
+                end
+                ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. duration .. "\\N")
+                entries = entries + 1
+            end
+            ::continue::
+        end
+
+        if entries == 0 and skipped > 0 then
+            if skip_shorter_than > -1 and skip_longer_than > -1 then
+                ass:append("No videos between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found\\N")
+            elseif skip_shorter_than > -1 then
+                ass:append("No videos shorter than ".. opts.skip_shorter_than .. " found\\N")
+            else
+                ass:append("No videos longer than ".. opts.skip_longer_than .. " found\\N")
             end
         end
 
@@ -738,14 +871,14 @@ local function show_menu()
         function()
             destroy()
             if opts.keep_playlist_on_select then
-                add_to_playlist(upnext[selected].file, upnext[selected].label, "append-play")
+                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
                 local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
                 local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
                 mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
                 mp.commandv("playlist-play-index", playlist_index_current + 1)
                 appended_to_playlist[upnext[selected].file] = true
             else
-                add_to_playlist(upnext[selected].file, upnext[selected].label, "replace")
+                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
             end
         end
     )
@@ -759,7 +892,7 @@ local function show_menu()
                 timeout:resume()
                 return
             else
-                add_to_playlist(upnext[selected].file, upnext[selected].label, "append")
+                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
                 appended_to_playlist[upnext[selected].file] = true
                 selected_move(1)
             end
@@ -860,9 +993,11 @@ local function open_uosc_menu()
         play_action = "replace"
     end
 
-    for i, v in ipairs(upnext) do
+    local skipped = 0
+    local entries = 0
+    for _, v in ipairs(upnext) do
         if v ~= nil then
-            local hint = tostring(i)
+            local hint = ""
             if appended_to_playlist[v.file] == true then
                 hint = '▷ ' .. hint
             end
@@ -872,32 +1007,51 @@ local function open_uosc_menu()
                 hint = hint,
                 keep_open = opts.uosc_keep_menu_open
             }
+
+            if v.length ~= nil and v.length > 0 then
+                video_item.hint = hint .. " " .. create_yt_time(v.length)
+
+                if opts.hide_skipped_videos then
+                    if skip_shorter_than > -1 and v.length < skip_shorter_than then
+                        skipped = skipped + 1
+                        goto continue
+                    end
+                    if skip_longer_than > -1 and v.length > skip_longer_than then
+                        skipped = skipped + 1
+                        goto continue
+                    end
+                end
+
+            end
+
             if opts.uosc_entry_action == "submenu" then
                 video_item["items"] = {
                     {
                         title = "Play",
-                        value = menu_command(play_action, v.file, v.label),
+                        value = menu_command(play_action, v.file, v.label, v.length),
                         keep_open = opts.uosc_keep_menu_open,
                         icon = 'play_circle',
                     },
                     {
                         title = "Up Next",
-                        value = menu_command("insert", v.file, v.label),
+                        value = menu_command("insert", v.file, v.label, v.length),
                         keep_open = opts.uosc_keep_menu_open,
                         icon = 'queue',
                     },
                     {
                         title = "Add to playlist",
-                        value = menu_command("append", v.file, v.label),
+                        value = menu_command("append", v.file, v.label, v.length),
                         keep_open = opts.uosc_keep_menu_open,
                         icon = 'add_circle'
                     }
                 }
             else
-                video_item["value"] = menu_command(opts.uosc_entry_action, v.file, v.label)
+                video_item["value"] = menu_command(opts.uosc_entry_action, v.file, v.label, v.length)
             end
+            entries = entries + 1
             table.insert(menu_data["items"], video_item)
         end
+        ::continue::
     end
 
     if not_youtube and num_upnext == 0 then
@@ -926,7 +1080,27 @@ local function open_uosc_menu()
                 keep_open = false
             }
         )
+    elseif entries == 0 and skipped > 0 then
+        local title = "No videos longer than ".. opts.skip_longer_than .. " found"
+        if skip_shorter_than > -1 and skip_longer_than > -1 then
+            title = "No videos between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found"
+        elseif skip_shorter_than > -1 then
+            title = "No videos shorter than ".. opts.skip_shorter_than .. " found"
+        end
+        table.insert(
+            menu_data["items"],
+            1,
+            {
+                title = title,
+                icon = "warning",
+                value = menu_command(),
+                bold = true,
+                active = 1,
+                keep_open = false
+            }
+        )
     end
+
 
     menu_json = utils.format_json(menu_data)
     mp.commandv("script-message-to", "uosc", "update-menu", menu_json)
@@ -971,8 +1145,8 @@ mp.register_script_message(
 
 mp.register_script_message(
     "play",
-    function(url, label)
-        add_to_playlist(url, label, "append-play")
+    function(url, label, length)
+        add_to_playlist(url, label, length, "append-play")
         local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
         local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
         mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
@@ -983,15 +1157,15 @@ mp.register_script_message(
 
 mp.register_script_message(
     "replace",
-    function(url, label)
-        add_to_playlist(url, label, "replace")
+    function(url, label, length)
+        add_to_playlist(url, label, length, "replace")
     end
 )
 
 mp.register_script_message(
     "insert",
-    function(url, label)
-        add_to_playlist(url, label, "append")
+    function(url, label, length)
+        add_to_playlist(url, label, length, "append")
         local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
         local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
         mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
@@ -1001,8 +1175,8 @@ mp.register_script_message(
 
 mp.register_script_message(
     "append",
-    function(url, label)
-        add_to_playlist(url, label, "append")
+    function(url, label, length)
+        add_to_playlist(url, label, length, "append")
         appended_to_playlist[url] = true
     end
 )
