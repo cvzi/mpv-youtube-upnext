@@ -710,21 +710,23 @@ local function on_file_start(_)
             if skip_shorter_than > -1 or skip_longer_than > -1 then
                 -- Append first video that is not too long or too short
                 for _, v in ipairs(upnext) do
+                    local skip_it = false
                     if v ~= nil then
                         if v.length ~= nil and v.length > 0 then
                             if skip_shorter_than > -1 and v.length < skip_shorter_than then
-                                goto continue
+                                skip_it = true
                             end
                             if skip_longer_than > -1 and v.length > skip_longer_than then
-                                goto continue
+                                skip_it = true
                             end
-                            -- Append first video
-                            add_to_playlist(v.file, v.label, v.length, "append")
-                            appended_to_playlist[v.file] = true
-                            return
+                            if not skip_it then
+                                -- Append first video
+                                add_to_playlist(v.file, v.label, v.length, "append")
+                                appended_to_playlist[v.file] = true
+                                return
+                            end
                         end
                     end
-                    ::continue::
                 end
                 msg.warn("No video between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found")
             end
@@ -781,27 +783,28 @@ local function show_menu()
         local skipped = 0
         local entries = 0
         for i, v in ipairs(upnext) do
+            local skip_it = false
             if v ~= nil then
                 local duration = ""
                 if v.length ~= nil and v.length > 0 then
                     duration = " " .. create_yt_time(v.length)
-
                     if opts.hide_skipped_videos then
                         if skip_shorter_than > -1 and v.length < skip_shorter_than then
                             skipped = skipped + 1
-                            goto continue
+                            skip_it = true
                         end
                         if skip_longer_than > -1 and v.length > skip_longer_than then
                             skipped = skipped + 1
-                            goto continue
+                            skip_it = true
                         end
                     end
 
                 end
-                ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. duration .. "\\N")
-                entries = entries + 1
+                if not skip_it then
+                    ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. duration .. "\\N")
+                    entries = entries + 1
+                end
             end
-            ::continue::
         end
 
         if entries == 0 and skipped > 0 then
@@ -1002,6 +1005,7 @@ local function open_uosc_menu()
     local skipped = 0
     local entries = 0
     for _, v in ipairs(upnext) do
+        local skip_it = false
         if v ~= nil then
             local hint = ""
             if appended_to_playlist[v.file] == true then
@@ -1020,44 +1024,44 @@ local function open_uosc_menu()
                 if opts.hide_skipped_videos then
                     if skip_shorter_than > -1 and v.length < skip_shorter_than then
                         skipped = skipped + 1
-                        goto continue
+                        skip_it = true
                     end
                     if skip_longer_than > -1 and v.length > skip_longer_than then
                         skipped = skipped + 1
-                        goto continue
+                        skip_it = true
                     end
                 end
-
             end
 
-            if opts.uosc_entry_action == "submenu" then
-                video_item["items"] = {
-                    {
-                        title = "Play",
-                        value = menu_command(play_action, v.file, v.label, v.length),
-                        keep_open = opts.uosc_keep_menu_open,
-                        icon = 'play_circle',
-                    },
-                    {
-                        title = "Up Next",
-                        value = menu_command("insert", v.file, v.label, v.length),
-                        keep_open = opts.uosc_keep_menu_open,
-                        icon = 'queue',
-                    },
-                    {
-                        title = "Add to playlist",
-                        value = menu_command("append", v.file, v.label, v.length),
-                        keep_open = opts.uosc_keep_menu_open,
-                        icon = 'add_circle'
+            if not skip_it then
+                if opts.uosc_entry_action == "submenu" then
+                    video_item["items"] = {
+                        {
+                            title = "Play",
+                            value = menu_command(play_action, v.file, v.label, v.length),
+                            keep_open = opts.uosc_keep_menu_open,
+                            icon = 'play_circle',
+                        },
+                        {
+                            title = "Up Next",
+                            value = menu_command("insert", v.file, v.label, v.length),
+                            keep_open = opts.uosc_keep_menu_open,
+                            icon = 'queue',
+                        },
+                        {
+                            title = "Add to playlist",
+                            value = menu_command("append", v.file, v.label, v.length),
+                            keep_open = opts.uosc_keep_menu_open,
+                            icon = 'add_circle'
+                        }
                     }
-                }
-            else
-                video_item["value"] = menu_command(opts.uosc_entry_action, v.file, v.label, v.length)
+                else
+                    video_item["value"] = menu_command(opts.uosc_entry_action, v.file, v.label, v.length)
+                end
+                entries = entries + 1
+                table.insert(menu_data["items"], video_item)
             end
-            entries = entries + 1
-            table.insert(menu_data["items"], video_item)
         end
-        ::continue::
     end
 
     if not_youtube and num_upnext == 0 then
