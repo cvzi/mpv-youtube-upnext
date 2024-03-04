@@ -240,7 +240,7 @@ local function download_upnext(url, post_data)
         table.insert(command, "--data")
         table.insert(command, post_data)
     end
-    if opts.cookies == nil or opts.cookies == "" then
+    if opts.cookies ~= nil and opts.cookies ~= "" then
         table.insert(command, "--cookie-jar")
         table.insert(command, opts.cookies)
         table.insert(command, "--cookie")
