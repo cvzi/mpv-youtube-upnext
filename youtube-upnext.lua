@@ -159,6 +159,7 @@ local last_dwidth = nil
 local watched_ids = {}
 local appended_to_playlist = {}
 local json = {}
+local terminal_id = 0
 
 local function table_size(t)
     local s = 0
@@ -776,7 +777,6 @@ local function show_menu()
     local timeout = nil
     local no_video = mp.get_property_native("dwidth", 0) < 10
     local selected = 1
-    local open_terminal = nil
     local function choose_prefix(i, already_appended)
         if i == selected and already_appended then
             return opts.cursor_appended_selected
@@ -861,7 +861,6 @@ local function show_menu()
                 appended_to_playlist[upnext[selected].file] = true
                 selected_move(1)
             end
-            open_terminal()
         elseif opts.keep_playlist_on_selectthen then
             -- Play (append to playlist)
             msg.info("Playing "..tostring(upnext[selected].label))
@@ -900,15 +899,6 @@ local function show_menu()
             destroyer()
         end
         handled_cursor = 0
-    end
-
-    open_terminal = function()
-        input.get({
-            prompt = "Select next video:",
-            submit = terminal_submit,
-            edited = terminal_edited,
-            closed = terminal_closed
-        })
     end
 
     local function draw_menu()
@@ -986,7 +976,32 @@ local function show_menu()
 
         input.set_log(terminal_lines)
         if no_video then
-            open_terminal()
+            -- Open terminal input
+            terminal_id = terminal_id + 1
+            input.get({
+                prompt = "Select next video:",
+                submit = terminal_submit,
+                edited = terminal_edited,
+                closed = terminal_closed,
+                id = "upnext" .. tostring(terminal_id),
+            })
+            -- Add key binding after opening terminal to overwrite arrow keys
+            mp.add_forced_key_binding(
+                opts.up_binding,
+                "move_up",
+                function()
+                    selected_move(-1)
+                end,
+                {repeatable = true}
+            )
+            mp.add_forced_key_binding(
+                opts.down_binding,
+                "move_down",
+                function()
+                    selected_move(1)
+                end,
+                {repeatable = true}
+            )
         end
     end
     redraw_menu = draw_menu
