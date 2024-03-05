@@ -14,11 +14,6 @@
 -- to set check_certificate to false, otherwise wget.exe might not be able to
 -- download the youtube website.
 
-local mp = require "mp"
-local utils = require "mp.utils"
-local msg = require "mp.msg"
-local assdraw = require "mp.assdraw"
-
 local opts = {
     --key bindings
     toggle_menu_binding = "ctrl+u",
@@ -115,8 +110,31 @@ local opts = {
     -- Don't show the videos that are too short or too long in the menu
     hide_skipped_videos = false,
 
+    -- Limit the number of suggested videos in the menu
+    suggestions_limit = 0,
 
 }
+
+local mp = require "mp"
+local utils = require "mp.utils"
+local msg = require "mp.msg"
+local assdraw = require "mp.assdraw"
+local input_import, input = pcall(require, "mp.input")
+if not input_import then
+    -- If mp.input is not available, use an empty implementation
+    input = {
+        get = function() end,
+        terminate = function() end,
+        set_log = function(lines)
+            local text = ""
+            for i = 1, #lines do
+                text = text .. "\n\r" ..lines[i].terminal_style .. lines[i].text .."\027[0m"
+            end
+            msg.info("\n" .. text)
+        end
+    }
+end
+
 (require "mp.options").read_options(opts, "youtube-upnext")
 
 -- Command line options
@@ -132,6 +150,8 @@ end
 local script_name = mp.get_script_name()
 
 local destroyer = nil
+local redraw_menu = nil
+local handled_cursor = 0
 local upnext_cache = {}
 local prefered_win_width = nil
 local last_dheight = nil
@@ -228,7 +248,7 @@ end
 
 local function download_upnext(url, post_data)
     if opts.fetch_on_start or opts.auto_add then
-        msg.info("fetching 'up next' with curl...")
+        msg.debug("fetching 'up next' with curl...")
     else
         mp.osd_message("fetching 'up next' with curl...", 60)
     end
@@ -389,7 +409,7 @@ local function get_invidious(url)
 
     if data.recommendedVideos then
         local res = {}
-        msg.verbose("downloaded and decoded json successfully (Invidious)")
+        msg.debug("downloaded and decoded json successfully (Invidious)")
         for i, v in ipairs(data.recommendedVideos) do
             local duration = -1
             if v.lengthSeconds ~= nil then
@@ -443,7 +463,7 @@ local function parse_upnext(json_str, current_video_url)
 
     local skipped_results = {}
     local res = {}
-    msg.verbose("downloaded and decoded json successfully")
+    msg.debug("downloaded and decoded json successfully")
 
     local index = 1
     local autoplay_id = nil
@@ -615,6 +635,15 @@ local function parse_upnext(json_str, current_video_url)
         end
     )
 
+    -- Limit amount of suggestions
+    if  opts.suggestions_limit ~= nil and opts.suggestions_limit > 0 and table_size(res) > opts.suggestions_limit then
+        local new_res = {}
+        for i = 1, opts.suggestions_limit do
+            new_res[i] = res[i]
+        end
+        res = new_res
+    end
+
     upnext_cache[current_video_url] = res
     return res, table_size(res)
 end
@@ -744,8 +773,10 @@ local function show_menu()
     end
     mp.osd_message("", 1)
 
-    local timeout
+    local timeout = nil
+    local no_video = mp.get_property_native("dwidth", 0) < 10
     local selected = 1
+    local open_terminal = nil
     local function choose_prefix(i, already_appended)
         if i == selected and already_appended then
             return opts.cursor_appended_selected
@@ -760,6 +791,124 @@ local function show_menu()
         end
 
         return "> " --shouldn't get here
+    end
+
+    local function choose_style(i, already_appended)
+        if i == selected and already_appended then
+            return 7
+        elseif i == selected then
+            return 7
+        end
+        if i ~= selected and already_appended then
+            return 2
+        elseif i ~= selected then
+            return 0
+        end
+        return 0 --shouldn't get here
+    end
+
+    local function selected_move(amt)
+        selected = selected + amt
+        if selected < 1 then
+            selected = num_upnext
+        elseif selected > num_upnext then
+            selected = 1
+        end
+        if timeout ~= nil then
+            timeout:kill()
+            timeout:resume()
+        end
+        if redraw_menu ~= nil then
+            redraw_menu()
+        end
+    end
+
+    local function end_terminal_menu()
+        if destroyer ~= nil then
+            destroyer()
+        end
+        input.terminate()
+    end
+
+    local function terminal_submit(text, text_override)
+        if text_override ~= nil then
+            text = text_override
+        else
+            text = text:sub(handled_cursor)
+        end
+        if text:sub(handled_cursor) == "q" then
+            end_terminal_menu()
+            return
+        end
+
+        number = tonumber(text:sub(handled_cursor))
+        if number ~= nil and number > 0 and number <= num_upnext then
+            selected = number
+        end
+
+        if text:sub(-1) == " " then
+            -- Append video to playlist
+            msg.info("Appending ".. upnext[selected].label .." to playlist")
+            -- prevent appending the same video twice
+            if appended_to_playlist[upnext[selected].file] == true then
+                if timeout ~= nil then
+                    timeout:kill()
+                    timeout:resume()
+                end
+                return
+            else
+                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
+                appended_to_playlist[upnext[selected].file] = true
+                selected_move(1)
+            end
+            open_terminal()
+        elseif opts.keep_playlist_on_selectthen then
+            -- Play (append to playlist)
+            msg.info("Playing "..tostring(upnext[selected].label))
+            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
+            local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
+            local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
+            mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
+            mp.commandv("playlist-play-index", playlist_index_current + 1)
+            appended_to_playlist[upnext[selected].file] = true
+            end_terminal_menu()
+        else
+            -- Play (replace playlist)
+            msg.info("Playing "..tostring(upnext[selected].label))
+            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
+            end_terminal_menu()
+        end
+    end
+
+    local function terminal_edited(text)
+        number = tonumber(text:sub(handled_cursor))
+        if number ~= nil and number > 0 and number <= num_upnext then
+            selected = number
+            if redraw_menu ~= nil then
+                redraw_menu()
+            end
+        end
+        -- Submit "append" action on space
+        if text:sub(-1) == " " then
+            terminal_submit("", tostring(selected) .. " ")
+            handled_cursor = #text + 1
+        end
+    end
+
+    local function terminal_closed()
+        if destroyer ~= nil then
+            destroyer()
+        end
+        handled_cursor = 0
+    end
+
+    open_terminal = function()
+        input.get({
+            prompt = "Select next video:",
+            submit = terminal_submit,
+            edited = terminal_edited,
+            closed = terminal_closed
+        })
     end
 
     local function draw_menu()
@@ -780,6 +929,11 @@ local function show_menu()
         ass:pos(opts.text_padding_x, opts.text_padding_y)
         ass:append(opts.style_ass_tags)
 
+        local terminal_lines = {}
+        table.insert(terminal_lines, {
+            text = "░░░░░░░░░░░░░░░░░░░░░░░░ Up Next ░░░░░░░░░░░░░░░░░░░░░░░░",
+            terminal_style = "\027[1m",
+        })
         local skipped = 0
         local entries = 0
         for i, v in ipairs(upnext) do
@@ -803,6 +957,14 @@ local function show_menu()
                 if not skip_it then
                     ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. duration .. "\\N")
                     entries = entries + 1
+                    local padded_label = v.label .. string.rep(" ", 17 - #v.label)
+                    local number = tostring(entries)
+                    number = string.rep(" ", 2 - #number) .. number .. " "
+                    table.insert(terminal_lines, {
+                        text = number .. choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. duration .." " .. padded_label,
+                        terminal_style = "\027[" .. choose_style(i, appended_to_playlist[v.file] ~= nil) .. "m",
+                    })
+
                 end
             end
         end
@@ -821,7 +983,13 @@ local function show_menu()
             w, h = 0, 0
         end
         mp.set_osd_ass(w, h, ass.text)
+
+        input.set_log(terminal_lines)
+        if no_video then
+            open_terminal()
+        end
     end
+    redraw_menu = draw_menu
 
     local function update_dimensions()
         draw_menu()
@@ -830,20 +998,10 @@ local function show_menu()
     update_dimensions()
     mp.observe_property("osd-dimensions", "native", update_dimensions)
 
-    local function selected_move(amt)
-        selected = selected + amt
-        if selected < 1 then
-            selected = num_upnext
-        elseif selected > num_upnext then
-            selected = 1
-        end
-        timeout:kill()
-        timeout:resume()
-        draw_menu()
-    end
-
     local function destroy()
-        timeout:kill()
+        if timeout ~= nil then
+            timeout:kill()
+        end
         mp.set_osd_ass(0, 0, "")
         mp.remove_key_binding("move_up")
         mp.remove_key_binding("move_down")
@@ -853,10 +1011,42 @@ local function show_menu()
         mp.remove_key_binding("quit")
         mp.unobserve_property(update_dimensions)
         destroyer = nil
+        redraw_menu = nil
     end
 
-    timeout = mp.add_periodic_timer(opts.menu_timeout, destroy)
+    if not no_video then
+        timeout = mp.add_periodic_timer(opts.menu_timeout, destroy)
+    end
     destroyer = destroy
+
+    local function on_key_select()
+        destroy()
+        if opts.keep_playlist_on_select then
+            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
+            local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
+            local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
+            mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
+            mp.commandv("playlist-play-index", playlist_index_current + 1)
+            appended_to_playlist[upnext[selected].file] = true
+        else
+            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
+        end
+    end
+
+    local function on_key_append()
+        -- prevent appending the same video twice
+        if appended_to_playlist[upnext[selected].file] == true then
+            if timeout ~= nil then
+                timeout:kill()
+                timeout:resume()
+            end
+            return
+        else
+            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
+            appended_to_playlist[upnext[selected].file] = true
+            selected_move(1)
+        end
+    end
 
     mp.add_forced_key_binding(
         opts.up_binding,
@@ -874,40 +1064,10 @@ local function show_menu()
         end,
         {repeatable = true}
     )
-    mp.add_forced_key_binding(
-        opts.select_binding,
-        "select",
-        function()
-            destroy()
-            if opts.keep_playlist_on_select then
-                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
-                local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-                local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-                mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
-                mp.commandv("playlist-play-index", playlist_index_current + 1)
-                appended_to_playlist[upnext[selected].file] = true
-            else
-                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
-            end
-        end
-    )
-    mp.add_forced_key_binding(
-        opts.append_binding,
-        "append",
-        function()
-            -- prevent appending the same video twice
-            if appended_to_playlist[upnext[selected].file] == true then
-                timeout:kill()
-                timeout:resume()
-                return
-            else
-                add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
-                appended_to_playlist[upnext[selected].file] = true
-                selected_move(1)
-            end
-        end,
-        {repeatable = true}
-    )
+    if not no_video or not input_import then
+        mp.add_forced_key_binding(opts.select_binding, "select", on_key_select)
+        mp.add_forced_key_binding(opts.append_binding, "append", on_key_append, {repeatable = true})
+    end
     mp.add_forced_key_binding(opts.close_binding, "quit", destroy)
     mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
 
