@@ -123,12 +123,12 @@ local input_import, input = pcall(require, "mp.input")
 if not input_import then
     -- If mp.input is not available, use an empty implementation
     input = {
-        get = function() end,
+        get = function(foo) end,
         terminate = function() end,
         set_log = function(lines)
             local text = ""
             for i = 1, #lines do
-                text = text .. "\n" ..lines[i].terminal_style .. lines[i].text .."\027[0m"
+                text = text .. "\n" .. lines[i].terminal_style .. lines[i].text .. "\027[0m"
             end
             mp.osd_message("\n" .. text)
         end
@@ -172,14 +172,14 @@ end
 local function exec(args, capture_stdout, capture_stderr)
     local ret =
         mp.command_native(
-        {
-            name = "subprocess",
-            playback_only = false,
-            capture_stdout = capture_stdout,
-            capture_stderr = capture_stderr,
-            args = args
-        }
-    )
+            {
+                name = "subprocess",
+                playback_only = false,
+                capture_stdout = capture_stdout,
+                capture_stderr = capture_stderr,
+                args = args
+            }
+        )
     return ret.status, ret.stdout, ret.stderr, ret
 end
 
@@ -254,7 +254,7 @@ local function download_upnext(url, post_data)
         mp.osd_message("fetching 'up next' with curl...", 60)
     end
 
-    local command = {"curl", "--silent", "--location"}
+    local command = { "curl", "--silent", "--location" }
     if post_data then
         table.insert(command, "--request")
         table.insert(command, "POST")
@@ -276,7 +276,7 @@ local function download_upnext(url, post_data)
             -- MP_SUBPROCESS_EINIT is -3 which can mean the command was not found:
             -- https://github.com/mpv-player/mpv/blob/24dcb5d167ba9580119e0b9cc26f79b1d155fcdc/osdep/subprocess-posix.c#L335-L336
             msg.debug("curl not found, trying wget")
-            local command_wget = {"wget", "-q", "-O", "-"}
+            local command_wget = { "wget", "-q", "-O", "-" }
             if not opts.check_certificate then
                 table.insert(command_wget, "--no-check-certificate")
             end
@@ -330,7 +330,7 @@ local function download_upnext(url, post_data)
             end
             msg.warn(
                 'Created a cookies jar file at "' ..
-                    tostring(opts.cookies) .. '". To hide this warning, set a cookies file in the script configuration'
+                tostring(opts.cookies) .. '". To hide this warning, set a cookies file in the script configuration'
             )
         end
         return download_upnext("https://consent.youtube.com/s", post_str)
@@ -362,7 +362,7 @@ local function get_invidious(url)
     url = string.gsub(url, "https://youtu%.be/", opts.invidious_instance .. "/api/v1/videos/")
     msg.debug("Invidious url:" .. url)
 
-    local command = {"curl", "--silent", "--location"}
+    local command = { "curl", "--silent", "--location" }
     if not opts.check_certificate then
         table.insert(command, "--no-check-certificate")
     end
@@ -373,7 +373,7 @@ local function get_invidious(url)
     if (es ~= 0) or (s == nil) or (s == "") then
         if es == -1 or es == -3 or es == 127 or es == 9009 then
             msg.debug("curl not found, trying wget")
-            local command_wget = {"wget", "-q", "-O", "-"}
+            local command_wget = { "wget", "-q", "-O", "-" }
             if not opts.check_certificate then
                 table.insert(command_wget, "--no-check-certificate")
             end
@@ -388,7 +388,6 @@ local function get_invidious(url)
             msg.error("failed to get invidious: error=" .. tostring(es))
             return {}
         end
-
     end
 
     local data
@@ -470,10 +469,11 @@ local function parse_upnext(json_str, current_video_url)
     local autoplay_id = nil
     if
         data.playerOverlays and data.playerOverlays.playerOverlayRenderer and
-            data.playerOverlays.playerOverlayRenderer.autoplay and
-            data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer
-     then
-        local playerOverlayAutoplayRenderer = data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer
+        data.playerOverlays.playerOverlayRenderer.autoplay and
+        data.playerOverlays.playerOverlayRenderer.autoplay.playerOverlayAutoplayRenderer
+    then
+        local playerOverlayAutoplayRenderer = data.playerOverlays.playerOverlayRenderer.autoplay
+        .playerOverlayAutoplayRenderer
         local title = playerOverlayAutoplayRenderer.videoTitle.simpleText
         local video_id = playerOverlayAutoplayRenderer.videoId
         local duration = -1
@@ -481,7 +481,8 @@ local function parse_upnext(json_str, current_video_url)
             playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer and
             playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer.text
         then
-            duration = parse_yt_time(playerOverlayAutoplayRenderer.thumbnailOverlays[1].thumbnailOverlayTimeStatusRenderer.text.simpleText)
+            duration = parse_yt_time(playerOverlayAutoplayRenderer.thumbnailOverlays[1]
+            .thumbnailOverlayTimeStatusRenderer.text.simpleText)
         end
 
         if watched_ids[video_id] == nil then -- Skip if the video was already watched
@@ -512,10 +513,10 @@ local function parse_upnext(json_str, current_video_url)
 
     if
         data.playerOverlays and data.playerOverlays.playerOverlayRenderer and
-            data.playerOverlays.playerOverlayRenderer.endScreen and
-            data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer and
-            data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
-     then
+        data.playerOverlays.playerOverlayRenderer.endScreen and
+        data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer and
+        data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results
+    then
         local n = table_size(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results)
         for i, v in ipairs(data.playerOverlays.playerOverlayRenderer.endScreen.watchNextEndScreenRenderer.results) do
             if v.endScreenVideoRenderer and v.endScreenVideoRenderer.title and v.endScreenVideoRenderer.title.simpleText then
@@ -554,8 +555,8 @@ local function parse_upnext(json_str, current_video_url)
 
     if
         data.contents and data.contents.twoColumnWatchNextResults and
-            data.contents.twoColumnWatchNextResults.secondaryResults
-     then
+        data.contents.twoColumnWatchNextResults.secondaryResults
+    then
         local secondaryResults = data.contents.twoColumnWatchNextResults.secondaryResults
         if secondaryResults.secondaryResults then
             secondaryResults = secondaryResults.secondaryResults
@@ -565,8 +566,8 @@ local function parse_upnext(json_str, current_video_url)
             local watchnextindex = index
             if
                 v.compactAutoplayRenderer and v.compactAutoplayRenderer and v.compactAutoplayRenderer.contents and
-                    v.compactAutoplayRenderer.contents.compactVideoRenderer
-             then
+                v.compactAutoplayRenderer.contents.compactVideoRenderer
+            then
                 compactVideoRenderer = v.compactAutoplayRenderer.contents.compactVideoRenderer
                 watchnextindex = 0
             elseif v.compactVideoRenderer then
@@ -574,8 +575,8 @@ local function parse_upnext(json_str, current_video_url)
             end
             if
                 compactVideoRenderer and compactVideoRenderer.videoId and compactVideoRenderer.title and
-                    compactVideoRenderer.title.simpleText
-             then
+                compactVideoRenderer.title.simpleText
+            then
                 local title = compactVideoRenderer.title.simpleText
                 local video_id = compactVideoRenderer.videoId
                 local duration = -1
@@ -637,7 +638,7 @@ local function parse_upnext(json_str, current_video_url)
     )
 
     -- Limit amount of suggestions
-    if  opts.suggestions_limit ~= nil and opts.suggestions_limit > 0 and table_size(res) > opts.suggestions_limit then
+    if opts.suggestions_limit ~= nil and opts.suggestions_limit > 0 and table_size(res) > opts.suggestions_limit then
         local new_res = {}
         for i = 1, opts.suggestions_limit do
             new_res[i] = res[i]
@@ -655,10 +656,10 @@ local function load_upnext()
         url = ""
     end
 
-    url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
-    url = string.gsub(url, "/shorts/", "/watch?v=") -- Convert shorts to watch?v=.
+    url = string.gsub(url, "ytdl://", "")                              -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "/shorts/", "/watch?v=")                    -- Convert shorts to watch?v=.
     url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
-    url = string.gsub(url, "%?feature=share", "") -- Strip possible ?feature=share suffix.
+    url = string.gsub(url, "%?feature=share", "")                      -- Strip possible ?feature=share suffix.
 
     if string.find(url, "//youtu.be/") == nil and string.find(url, "//youtube.com/") == nil then
         -- SVP calls mpv like this:
@@ -719,10 +720,10 @@ end
 local function on_file_start(_)
     local url = mp.get_property("path")
 
-    url = string.gsub(url, "ytdl://", "") -- Strip possible ytdl:// prefix.
-    url = string.gsub(url, "/shorts/", "/watch?v=") -- Convert shorts to watch?v=.
+    url = string.gsub(url, "ytdl://", "")                              -- Strip possible ytdl:// prefix.
+    url = string.gsub(url, "/shorts/", "/watch?v=")                    -- Convert shorts to watch?v=.
     url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
-    url = string.gsub(url, "%?feature=share", "") -- Strip possible ?feature=share suffix.
+    url = string.gsub(url, "%?feature=share", "")                      -- Strip possible ?feature=share suffix.
 
     if string.find(url, "youtu") ~= nil then
         -- Try to add current video ID to watched list
@@ -736,7 +737,6 @@ local function on_file_start(_)
 
         local upnext, num_upnext = load_upnext()
         if num_upnext > 0 then
-
             if skip_shorter_than > -1 or skip_longer_than > -1 then
                 -- Append first video that is not too long or too short
                 for _, v in ipairs(upnext) do
@@ -758,7 +758,7 @@ local function on_file_start(_)
                         end
                     end
                 end
-                msg.warn("No video between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found")
+                msg.warn("No video between " .. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found")
             end
             -- Append first video
             add_to_playlist(upnext[1].file, upnext[1].label, upnext[1].length, "append")
@@ -841,14 +841,14 @@ local function show_menu()
             return
         end
 
-        number = tonumber(text:sub(handled_cursor))
+        local number = tonumber(text:sub(handled_cursor))
         if number ~= nil and number > 0 and number <= num_upnext then
             selected = number
         end
 
         if text:sub(-1) == " " then
             -- Append video to playlist
-            msg.info("Appending ".. upnext[selected].label .." to playlist")
+            msg.info("Appending " .. upnext[selected].label .. " to playlist")
             -- prevent appending the same video twice
             if appended_to_playlist[upnext[selected].file] == true then
                 if timeout ~= nil then
@@ -863,7 +863,7 @@ local function show_menu()
             end
         elseif opts.keep_playlist_on_selectthen then
             -- Play (append to playlist)
-            msg.info("Playing "..tostring(upnext[selected].label))
+            msg.info("Playing " .. tostring(upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
             local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
             local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
@@ -873,14 +873,14 @@ local function show_menu()
             end_terminal_menu()
         else
             -- Play (replace playlist)
-            msg.info("Playing "..tostring(upnext[selected].label))
+            msg.info("Playing " .. tostring(upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
             end_terminal_menu()
         end
     end
 
     local function terminal_edited(text)
-        number = tonumber(text:sub(handled_cursor))
+        local number = tonumber(text:sub(handled_cursor))
         if number ~= nil and number > 0 and number <= num_upnext then
             selected = number
             if redraw_menu ~= nil then
@@ -942,7 +942,6 @@ local function show_menu()
                             skip_it = true
                         end
                     end
-
                 end
                 if not skip_it then
                     ass:append(choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. v.label .. duration .. "\\N")
@@ -951,21 +950,22 @@ local function show_menu()
                     local number = tostring(entries)
                     number = string.rep(" ", 2 - #number) .. number .. " "
                     table.insert(terminal_lines, {
-                        text = number .. choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. duration .." " .. padded_label,
+                        text = number ..
+                        choose_prefix(i, appended_to_playlist[v.file] ~= nil) .. duration .. " " .. padded_label,
                         terminal_style = "\027[" .. choose_style(i, appended_to_playlist[v.file] ~= nil) .. "m",
                     })
-
                 end
             end
         end
 
         if entries == 0 and skipped > 0 then
             if skip_shorter_than > -1 and skip_longer_than > -1 then
-                ass:append("No videos between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found\\N")
+                ass:append("No videos between " ..
+                opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found\\N")
             elseif skip_shorter_than > -1 then
-                ass:append("No videos shorter than ".. opts.skip_shorter_than .. " found\\N")
+                ass:append("No videos shorter than " .. opts.skip_shorter_than .. " found\\N")
             else
-                ass:append("No videos longer than ".. opts.skip_longer_than .. " found\\N")
+                ass:append("No videos longer than " .. opts.skip_longer_than .. " found\\N")
             end
         end
 
@@ -994,7 +994,7 @@ local function show_menu()
                     function()
                         selected_move(-1)
                     end,
-                    {repeatable = true}
+                    { repeatable = true }
                 )
                 mp.add_forced_key_binding(
                     opts.down_binding,
@@ -1002,7 +1002,7 @@ local function show_menu()
                     function()
                         selected_move(1)
                     end,
-                    {repeatable = true}
+                    { repeatable = true }
                 )
             end)
         end
@@ -1072,7 +1072,7 @@ local function show_menu()
         function()
             selected_move(-1)
         end,
-        {repeatable = true}
+        { repeatable = true }
     )
     mp.add_forced_key_binding(
         opts.down_binding,
@@ -1080,11 +1080,11 @@ local function show_menu()
         function()
             selected_move(1)
         end,
-        {repeatable = true}
+        { repeatable = true }
     )
     if not no_video or not input_import then
         mp.add_forced_key_binding(opts.select_binding, "select", on_key_select)
-        mp.add_forced_key_binding(opts.append_binding, "append", on_key_append, {repeatable = true})
+        mp.add_forced_key_binding(opts.append_binding, "append", on_key_append, { repeatable = true })
     end
     mp.add_forced_key_binding(opts.close_binding, "quit", destroy)
     mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
@@ -1137,7 +1137,7 @@ local function on_dwidth_change(_, value)
 end
 
 local function menu_command(...)
-    return {"script-message-to", script_name, ...}
+    return { "script-message-to", script_name, ... }
 end
 
 local function open_uosc_menu()
@@ -1187,7 +1187,7 @@ local function open_uosc_menu()
         if v ~= nil then
             local hint = ""
             if appended_to_playlist[v.file] == true then
-                hint = '▷ ' .. hint
+                hint = "▷ " .. hint
             end
             local video_item = {
                 title = v.label,
@@ -1218,19 +1218,19 @@ local function open_uosc_menu()
                             title = "Play",
                             value = menu_command(play_action, v.file, v.label, v.length),
                             keep_open = opts.uosc_keep_menu_open,
-                            icon = 'play_circle',
+                            icon = "play_circle",
                         },
                         {
                             title = "Up Next",
                             value = menu_command("insert", v.file, v.label, v.length),
                             keep_open = opts.uosc_keep_menu_open,
-                            icon = 'queue',
+                            icon = "queue",
                         },
                         {
                             title = "Add to playlist",
                             value = menu_command("append", v.file, v.label, v.length),
                             keep_open = opts.uosc_keep_menu_open,
-                            icon = 'add_circle'
+                            icon = "add_circle",
                         }
                     }
                 else
@@ -1269,11 +1269,11 @@ local function open_uosc_menu()
             }
         )
     elseif entries == 0 and skipped > 0 then
-        local title = "No videos longer than ".. opts.skip_longer_than .. " found"
+        local title = "No videos longer than " .. opts.skip_longer_than .. " found"
         if skip_shorter_than > -1 and skip_longer_than > -1 then
-            title = "No videos between ".. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found"
+            title = "No videos between " .. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found"
         elseif skip_shorter_than > -1 then
-            title = "No videos shorter than ".. opts.skip_shorter_than .. " found"
+            title = "No videos shorter than " .. opts.skip_shorter_than .. " found"
         end
         table.insert(
             menu_data["items"],
