@@ -124,13 +124,33 @@ if not input_import then
     -- If mp.input is not available, use an empty implementation
     input = {
         get = function(foo) end,
-        terminate = function() end,
+        terminate = function()
+            mp.osd_message("", 1)
+            -- Print media info (in case the input box is closed without playing a new video)
+            local media_title = mp.get_property("media-title")
+            local metadata = mp.get_property_native("metadata")
+            if metadata then
+                if metadata["uploader"] then
+                    mp.commandv("print-text", " Uploader: " .. metadata["uploader"])
+                end
+                if metadata["channel_url"] then
+                    mp.commandv("print-text", " Channel URL: " .. metadata["channel_url"])
+                end
+            end
+            if media_title then
+                mp.commandv("print-text", " Title: " .. media_title)
+            end
+        end,
         set_log = function(lines)
             local text = ""
             for i = 1, #lines do
-                text = text .. "\n" .. lines[i].terminal_style .. lines[i].text .. "\027[0m"
+                if type(lines[i]) == 'table' then
+                    text = text .. "\n" .. lines[i].terminal_style .. lines[i].text .. "\027[0m"
+                else
+                    text = text .. "\n" .. tostring(lines[i])
+                end
             end
-            mp.osd_message("\n" .. text)
+            mp.osd_message(text, 999)
         end
     }
 end
@@ -827,7 +847,6 @@ local function show_menu()
         if destroyer ~= nil then
             destroyer()
         end
-        input.terminate()
     end
 
     local function terminal_submit(text, text_override)
@@ -920,6 +939,21 @@ local function show_menu()
         ass:append(opts.style_ass_tags)
 
         local terminal_lines = {}
+        -- Print media info
+        local media_title = mp.get_property("media-title")
+        local metadata = mp.get_property_native("metadata")
+        if metadata then
+            if metadata["uploader"] then
+                table.insert(terminal_lines, " Uploader: " .. metadata["uploader"])
+            end
+            if metadata["channel_url"] then
+                table.insert(terminal_lines, " Channel URL: " .. metadata["channel_url"])
+            end
+        end
+        if media_title then
+            table.insert(terminal_lines, " Title: " .. media_title)
+        end
+
         table.insert(terminal_lines, {
             text = "░░░░░░░░░░░░░░░░░░░░░░░░ Up Next ░░░░░░░░░░░░░░░░░░░░░░░░",
             terminal_style = "\027[1m",
@@ -1017,8 +1051,13 @@ local function show_menu()
     mp.observe_property("osd-dimensions", "native", update_dimensions)
 
     local function destroy()
+        destroyer = nil
+        redraw_menu = nil
         if timeout ~= nil then
             timeout:kill()
+        end
+        if no_video then
+            input.terminate()
         end
         mp.set_osd_ass(0, 0, "")
         mp.remove_key_binding("move_up")
@@ -1028,8 +1067,6 @@ local function show_menu()
         mp.remove_key_binding("escape")
         mp.remove_key_binding("quit")
         mp.unobserve_property(update_dimensions)
-        destroyer = nil
-        redraw_menu = nil
     end
 
     if not no_video then
