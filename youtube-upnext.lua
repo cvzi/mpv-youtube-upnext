@@ -867,15 +867,16 @@ local function show_menu()
 
         if text:sub(-1) == " " then
             -- Append video to playlist
-            msg.info("Appending " .. upnext[selected].label .. " to playlist")
             -- prevent appending the same video twice
             if appended_to_playlist[upnext[selected].file] == true then
+                msg.info("Already in playlist: " .. upnext[selected].label)
                 if timeout ~= nil then
                     timeout:kill()
                     timeout:resume()
                 end
                 return
             else
+                msg.info("Appending " .. upnext[selected].label .. " to playlist")
                 add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
                 appended_to_playlist[upnext[selected].file] = true
                 selected_move(1)
@@ -1076,6 +1077,7 @@ local function show_menu()
 
     local function on_key_select()
         destroy()
+        msg.info("Playing " .. tostring(upnext[selected].label))
         if opts.keep_playlist_on_select then
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
             local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
@@ -1091,12 +1093,14 @@ local function show_menu()
     local function on_key_append()
         -- prevent appending the same video twice
         if appended_to_playlist[upnext[selected].file] == true then
+            msg.info("Already in playlist: " .. upnext[selected].label)
             if timeout ~= nil then
                 timeout:kill()
                 timeout:resume()
             end
             return
         else
+            msg.info("Appending " .. upnext[selected].label .. " to playlist")
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
             appended_to_playlist[upnext[selected].file] = true
             selected_move(1)
