@@ -356,6 +356,16 @@ local function download_upnext(url, post_data)
         return download_upnext("https://consent.youtube.com/s", post_str)
     end
 
+    -- Try to find <title> tag
+    local title = s:match("<title>(.-)</title>") or ""
+    title = title:gsub("%- YouTube", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if title ~= "" then
+        mp.commandv("print-text", "Title: " ..title .. "\027]0;" .. title .. "\007")
+        mp.set_property("media-title", title)
+    else
+        mp.commandv("print-text", "\027]0;\007")
+    end
+
     local pos1 = string.find(s, "ytInitialData =", 1, true)
     if pos1 == nil then
         mp.osd_message("upnext failed, no upnext data found err01", 10)
@@ -433,7 +443,7 @@ local function get_invidious(url)
         for i, v in ipairs(data.recommendedVideos) do
             local duration = -1
             if v.lengthSeconds ~= nil then
-                duration = tonumber(v.lengthSeconds)
+                duration = tonumber(v.lengthSeconds) or duration
             end
             table.insert(
                 res,
@@ -876,14 +886,14 @@ local function show_menu()
                 end
                 return
             else
-                msg.info("Appending " .. upnext[selected].label .. " to playlist")
+                msg.info("Appending: " .. upnext[selected].label .. " to playlist")
                 add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
                 appended_to_playlist[upnext[selected].file] = true
                 selected_move(1)
             end
         elseif opts.keep_playlist_on_selectthen then
             -- Play (append to playlist)
-            msg.info("Playing " .. tostring(upnext[selected].label))
+            msg.info("Playing: " .. tostring(upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
             local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
             local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
@@ -893,7 +903,7 @@ local function show_menu()
             end_terminal_menu()
         else
             -- Play (replace playlist)
-            msg.info("Playing " .. tostring(upnext[selected].label))
+            msg.info("Playing: " .. tostring(upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
             end_terminal_menu()
         end
@@ -1077,7 +1087,7 @@ local function show_menu()
 
     local function on_key_select()
         destroy()
-        msg.info("Playing " .. tostring(upnext[selected].label))
+        msg.info("Playing: " .. tostring(upnext[selected].label))
         if opts.keep_playlist_on_select then
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
             local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
@@ -1100,7 +1110,7 @@ local function show_menu()
             end
             return
         else
-            msg.info("Appending " .. upnext[selected].label .. " to playlist")
+            msg.info("Appending: " .. upnext[selected].label .. " to playlist")
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
             appended_to_playlist[upnext[selected].file] = true
             selected_move(1)
