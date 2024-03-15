@@ -361,7 +361,7 @@ local function download_upnext(url, post_data)
     title = title:gsub("%- YouTube", ""):gsub("^%s+", ""):gsub("%s+$", "")
     if title ~= "" then
         mp.commandv("print-text", "Title: " ..title .. "\027]0;" .. title .. "\007")
-        mp.set_property("media-title", title)
+        mp.set_property("file-local-options/force-media-title", title)
     else
         mp.commandv("print-text", "\027]0;\007")
     end
