@@ -91,6 +91,11 @@ You need to update yt-dlp occasionally when it stops working.
 Unfortunately SVP does not make the quality available to scripts. That means the quality settings that were
 selected in SVP are not preserved when the next video is loaded.
 
+### Old mpv versions
+
+If you are using an old version of mpv before `v0.37.0`, you may have to use an [older version](https://github.com/cvzi/mpv-youtube-upnext/releases/tag/v1.0) of this script
+and set `use_json_lua` to `yes` in the configuration.
+
 ## Credit
 - I pretty much copied the [mpv-youtube-quality](https://github.com/jgreco/mpv-youtube-quality) script and added wget
 
