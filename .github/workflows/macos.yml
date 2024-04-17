@@ -20,6 +20,7 @@ jobs:
 
       - name: Install mpv
         run: |
+          brew install coreutils
           brew install ffmpeg luajit mujs uchardet vapoursynth libplacebo
           brew install --ignore-dependencies mpv
         env:
@@ -50,8 +51,8 @@ jobs:
         run: |
           ytloc=$(which yt-dlp)
           echo ytloc: $ytloc
-          mpv --end=00:00:10 --ytdl=no --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes,youtube-upnext-use_json_lua=yes" --scripts=ytdl_hook.lua:youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0"
-          output=$(mpv --end=00:00:10 --ytdl=no --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes,youtube-upnext-use_json_lua=yes" --scripts=ytdl_hook.lua:youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0" 2>&1)
+          timeout 15 mpv --end=00:00:10 --ytdl=no --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes,youtube-upnext-use_json_lua=yes" --scripts=ytdl_hook.lua:youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0"
+          output=$(timeout 15 mpv --end=00:00:10 --ytdl=no --script-opts="ytdl_hook-ytdl_path=$ytloc,youtube-upnext-auto_add=no,youtube-upnext-fetch_on_start=yes,youtube-upnext-use_json_lua=yes" --scripts=ytdl_hook.lua:youtube-upnext.lua --msg-level=youtube_upnext=trace "https://www.youtube.com/watch?v=VpOLXXBcAl0" 2>&1)
           echo $output
           if [[ $output == *"downloaded and decoded json successfully"* ]]; then
             exit 0
