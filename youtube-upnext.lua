@@ -45,7 +45,7 @@ local opts = {
     --these styles will be used for the whole playlist. More specific styling will need to be hacked in
     --
     --(a monospaced font is recommended but not required e.g. {\\fnmonospace\\fs25} )
-    style_ass_tags = "",
+    style_ass_tags = "{\\fs25}",
 
     --paddings for top left corner
     text_padding_x = 5,
