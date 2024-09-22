@@ -25,10 +25,11 @@ cURL is included in Windows 10+, macOS, Android and many Linux distributions.
 
 The location of the scripts directory on Windows is `%APPDATA%\mpv\scripts` e.g. `C:\Users\cvzi\AppData\Roaming\mpv\scripts`
 
-$\textcolor{#D00000}{\textsf{Microsoft ships an old version of cURL with known vulnerabilities.}}$
 You are encouraged to install a newer version of cURL:
 * Official cURL releases https://curl.se/windows/
 * [Chocolatey package](https://community.chocolatey.org/packages/curl)
+* [Scoop package](https://github.com/ScoopInstaller/Main/blob/master/bucket/curl.json)
+* [Winget package](https://github.com/microsoft/winget-pkgs/tree/master/manifests/c/cURL/cURL)
 * [git for windows](https://git-scm.com/) includes a version of cURL
 
 If you downloaded/installed the curl/wget executable, you have to [add the directory of the curl.exe/wget.exe to your machine's
