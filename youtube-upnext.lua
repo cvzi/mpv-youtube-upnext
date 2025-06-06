@@ -988,7 +988,6 @@ local function show_menu()
         mp.set_osd_ass(w, h, ass.text)
 
         if no_video then
-            input.set_log(terminal_lines)
 
             -- Open terminal input
             terminal_id = terminal_id + 1
@@ -999,6 +998,8 @@ local function show_menu()
                 closed = terminal_closed,
                 id = "upnext" .. tostring(terminal_id),
             })
+            input.set_log(terminal_lines)
+
             -- Add key binding after opening terminal to overwrite arrow keys
             mp.add_timeout(0.1, function()
                 mp.add_forced_key_binding(
