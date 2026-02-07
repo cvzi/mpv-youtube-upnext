@@ -59,7 +59,7 @@ local opts = {
     youtube_url = "https://www.youtube.com/watch?v=%s",
 
     -- Fallback Invidious instance, see https://api.invidious.io/ for alternatives
-    invidious_instance = "https://inv.tux.pizza",
+    invidious_instance = "",
 
     -- Keep the width of the window the same when the next video is played
     restore_window_width = false,
@@ -407,11 +407,12 @@ local function get_invidious(url)
             es, s, _, _ = exec(command_wget, true)
             if (es ~= 0) or (s == nil) or (s == "") then
                 mp.osd_message("upnext failed: curl was not found, wget failed", 10)
+                msg.error("failed to get invidious: wget error=" .. tostring(es))
                 return {}
             end
         else
-            mp.osd_message("upnext failed: error=" .. tostring(es), 10)
-            msg.error("failed to get invidious: error=" .. tostring(es))
+            mp.osd_message("upnext failed: curl error=" .. tostring(es), 10)
+            msg.error("failed to get invidious: curl error=" .. tostring(es))
             return {}
         end
     end
