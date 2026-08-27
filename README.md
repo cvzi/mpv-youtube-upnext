@@ -7,6 +7,15 @@ Toggle the menu with `ctrl+u` (configurable). Select from the list with the arro
 
 Press `Space` to append to the playlist. Close menu with `Escape` or `ctrl+u`.
 
+Automatic additions can be toggled at runtime with `Ctrl+Shift+U` by default.
+
+### Screen-reader announcements
+
+The script can send announcements to a companion mpv script that implements the
+`speak` script-message protocol, such as `mpv-accessibility`. To opt in, enable
+`screen_reader=yes` in `youtube-upnext.conf`; configure the target script name
+with `a11y_manager` and choose `a11y_language=en` or `a11y_language=es`.
+
 ## Installation
 
 Copy youtube-upnext.lua into your scripts directory, e.g.:

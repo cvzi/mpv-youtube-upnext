@@ -17,6 +17,8 @@
 local opts = {
     --key bindings
     toggle_menu_binding = "ctrl+u",
+    -- Ctrl+Shift+U; mpv represents Shift+ASCII letters as uppercase.
+    toggle_auto_add_binding = "Ctrl+U",
     up_binding = "UP",
     down_binding = "DOWN",
     select_binding = "ENTER",
@@ -110,6 +112,12 @@ local opts = {
     -- Limit the number of suggested videos in the menu
     suggestions_limit = 0,
 
+    -- Optional screen-reader announcements through a script that implements
+    -- the `speak` script-message protocol (for example, mpv-accessibility).
+    screen_reader = false,
+    a11y_manager = "mpv_accessibility",
+    a11y_language = "en",
+
 }
 
 local mp = require "mp"
@@ -154,6 +162,73 @@ end
 
 (require "mp.options").read_options(opts, "youtube-upnext")
 
+local a11y_strings = {
+    en = {
+        video_position = "Video %d of %d",
+        duration = "Duration %s",
+        already_in_playlist = "already in playlist",
+        fetch_failed = "Error: recommendations could not be fetched",
+        fetch_failed_code = "Error fetching recommendations, code %s",
+        no_recommendation_data = "Error: no recommendation data was found",
+        auto_added = "Next video added automatically: %s",
+        auto_add_enabled = "Automatically add next video: enabled",
+        auto_add_disabled = "Automatically add next video: disabled",
+        no_duration_match = "No video matching the requested duration was found",
+        no_recommendations = "No recommended videos are available",
+        upnext_menu_open = "Up Next menu opened. %d videos available.",
+        already_in_list = "Already in playlist: %s",
+        added_to_list = "Added to playlist: %s",
+        playing = "Playing: %s",
+        playing_replace = "Playing and replacing playlist: %s",
+        terminal_summary = "Up Next menu. %d videos.",
+        selected = "Selected: %s",
+        menu_closed = "Menu closed",
+        not_youtube = "The current file is not a YouTube video",
+        no_results = "No recommendation results",
+        recommendations_menu_open = "Recommendations menu opened. %d videos available.",
+        insert_next = "Inserted as next: %s",
+    },
+    es = {
+        video_position = "Video %d de %d",
+        duration = "Duración %s",
+        already_in_playlist = "ya en la lista",
+        fetch_failed = "Error: no se pudieron obtener las recomendaciones",
+        fetch_failed_code = "Error al obtener recomendaciones, código %s",
+        no_recommendation_data = "Error: no se encontraron datos de recomendaciones",
+        auto_added = "Siguiente video añadido automáticamente: %s",
+        auto_add_enabled = "Añadir siguiente video automáticamente: activado",
+        auto_add_disabled = "Añadir siguiente video automáticamente: desactivado",
+        no_duration_match = "No se encontró ningún video con la duración especificada",
+        no_recommendations = "No hay videos recomendados disponibles",
+        upnext_menu_open = "Menú Up Next abierto. %d videos disponibles.",
+        already_in_list = "Ya está en la lista: %s",
+        added_to_list = "Añadido a la lista: %s",
+        playing = "Reproduciendo: %s",
+        playing_replace = "Reproduciendo y reemplazando lista: %s",
+        terminal_summary = "Menú Up Next. %d videos.",
+        selected = "Seleccionado: %s",
+        menu_closed = "Menú cerrado",
+        not_youtube = "El archivo actual no es un video de YouTube",
+        no_results = "No hay resultados de recomendaciones",
+        recommendations_menu_open = "Menú de recomendaciones abierto. %d videos disponibles.",
+        insert_next = "Insertado como siguiente: %s",
+    },
+}
+
+local requested_a11y_language = tostring(opts.a11y_language or "en"):lower():match("^([a-z]+)") or "en"
+local active_a11y_language = a11y_strings[requested_a11y_language] and requested_a11y_language or "en"
+if active_a11y_language ~= requested_a11y_language then
+    msg.warn("Unsupported a11y_language='" .. tostring(opts.a11y_language) .. "'; falling back to 'en'")
+end
+
+local function a11y_t(key, ...)
+    local template = a11y_strings[active_a11y_language][key] or a11y_strings.en[key] or key
+    if select("#", ...) > 0 then
+        return string.format(template, ...)
+    end
+    return template
+end
+
 -- Command line options
 if opts.cookies == nil or opts.cookies == "" then
     local raw_options = mp.get_property_native("options/ytdl-raw-options")
@@ -176,6 +251,31 @@ local last_dwidth = nil
 local watched_ids = {}
 local appended_to_playlist = {}
 local terminal_id = 0
+local auto_add_enabled = opts.auto_add == true
+local auto_added_for_source = {}
+
+local function accessibility_target()
+    local name = tostring(opts.a11y_manager or "mpv_accessibility")
+    return (name:gsub("[^%w_]", "_"))
+end
+
+local function announce(text, interrupt)
+    if not opts.screen_reader or text == nil or text == "" then
+        return
+    end
+    if interrupt == nil then
+        interrupt = true
+    end
+    mp.commandv(
+        "script-message-to",
+        accessibility_target(),
+        "speak",
+        tostring(text),
+        interrupt and "1" or "0",
+        script_name,
+        "1"
+    )
+end
 
 local function table_size(t)
     local s = 0
@@ -237,6 +337,20 @@ local function create_yt_time(seconds)
         return string.format("%02d:%02d:%02d", hour, min, sec)
     end
     return string.format("%02d:%02d", min, sec)
+end
+
+local function announce_video(entry, index, total)
+    if entry == nil then
+        return
+    end
+    local parts = { a11y_t("video_position", index, total), entry.label }
+    if entry.length and entry.length > 0 then
+        table.insert(parts, a11y_t("duration", create_yt_time(entry.length)))
+    end
+    if appended_to_playlist[entry.file] then
+        table.insert(parts, a11y_t("already_in_playlist"))
+    end
+    announce(table.concat(parts, ". "), true)
 end
 
 local function extract_videoid(url)
@@ -321,6 +435,7 @@ local function download_upnext(url, post_data)
             es, s, _, _ = exec(command, true)
             if (es ~= 0) or (s == nil) or (s == "") then
                 mp.osd_message("upnext failed: curl was not found, wget failed", 10)
+                announce(a11y_t("fetch_failed"))
                 return "{}"
             end
         else
@@ -328,6 +443,7 @@ local function download_upnext(url, post_data)
             msg.error("failed to get upnext list: error=" .. tostring(es))
             msg.error("s: " .. tostring(s))
             msg.debug("exec (async): " .. table.concat(command, " "))
+            announce(a11y_t("fetch_failed_code", tostring(es)))
             return "{}"
         end
     end
@@ -366,6 +482,7 @@ local function download_upnext(url, post_data)
     if pos1 == nil then
         mp.osd_message("upnext failed, no upnext data found err01", 10)
         msg.error("failed to find json position 01: pos1=nil")
+        announce(a11y_t("no_recommendation_data"))
         return "{}"
     end
     local pos2 = string.find(s, ";%s*</script>", pos1 + 1)
@@ -719,66 +836,103 @@ local function load_upnext()
 end
 
 local function add_to_playlist(path, title, length, flag)
-    if length ~= nil or length < 0 then
+    length = tonumber(length)
+    if length == nil or length < 0 then
         length = 0
     end
     local playlist = "memory://#EXTM3U\n#EXTINF:" .. tostring(length) .. "," .. title .. "\n" .. path
     mp.commandv("loadlist", playlist, flag)
 end
 
-local function on_file_start(_)
+local function play_keep_playlist(path, title, length)
+    local current = tonumber(mp.get_property("playlist-current-pos", "-1")) or -1
+    local idle = mp.get_property_bool("idle-active", false)
+
+    if current >= 0 and not idle then
+        add_to_playlist(path, title, length, "insert-next")
+        mp.commandv("playlist-next", "force")
+    else
+        add_to_playlist(path, title, length, "append-play")
+    end
+
+    appended_to_playlist[path] = true
+end
+
+local function auto_add_current_video()
+    if not auto_add_enabled then
+        return
+    end
+
     local url = mp.get_property("path")
+    if url == nil or url == "" then
+        return
+    end
 
-    url = string.gsub(url, "ytdl://", "")                              -- Strip possible ytdl:// prefix.
-    url = string.gsub(url, "/shorts/", "/watch?v=")                    -- Convert shorts to watch?v=.
-    url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=") -- Account for alternative frontends.
-    url = string.gsub(url, "%?feature=share", "")                      -- Strip possible ?feature=share suffix.
+    url = string.gsub(url, "ytdl://", "")
+    url = string.gsub(url, "/shorts/", "/watch?v=")
+    url = string.gsub(url, "//.*/watch%?v=", "//youtube.com/watch?v=")
+    url = string.gsub(url, "%?feature=share", "")
+    if string.find(url, "youtu") == nil or auto_added_for_source[url] then
+        return
+    end
 
-    if string.find(url, "youtu") ~= nil then
-        -- Try to add current video ID to watched list
-        -- extract from https://www.youtube.com/watch?v=abcd_1234-ef
-        local video_id = extract_videoid(url)
+    local video_id = extract_videoid(url)
+    if video_id ~= nil then
+        watched_ids[video_id] = true
+        msg.debug("Adding to watched_ids: " .. tostring(video_id))
+    end
 
-        if video_id ~= nil then
-            watched_ids[video_id] = true
-            msg.debug("Adding to watched_ids: " .. tostring(video_id))
-        end
+    local upnext, num_upnext = load_upnext()
+    if num_upnext <= 0 then
+        return
+    end
 
-        local upnext, num_upnext = load_upnext()
-        if num_upnext > 0 then
-            if skip_shorter_than > -1 or skip_longer_than > -1 then
-                -- Append first video that is not too long or too short
-                for _, v in ipairs(upnext) do
-                    local skip_it = false
-                    if v ~= nil then
-                        if v.length ~= nil and v.length > 0 then
-                            if skip_shorter_than > -1 and v.length < skip_shorter_than then
-                                skip_it = true
-                            end
-                            if skip_longer_than > -1 and v.length > skip_longer_than then
-                                skip_it = true
-                            end
-                            if not skip_it then
-                                -- Append first video
-                                add_to_playlist(v.file, v.label, v.length, "append")
-                                appended_to_playlist[v.file] = true
-                                return
-                            end
-                        end
-                    end
-                end
-                msg.warn("No video between " .. opts.skip_shorter_than .. " and " .. opts.skip_longer_than .. " found")
+    local filters_active = skip_shorter_than > -1 or skip_longer_than > -1
+    for _, video in ipairs(upnext) do
+        if video ~= nil and not appended_to_playlist[video.file] then
+            local matches_duration = not filters_active
+                or (video.length ~= nil and video.length > 0
+                    and (skip_shorter_than <= -1 or video.length >= skip_shorter_than)
+                    and (skip_longer_than <= -1 or video.length <= skip_longer_than))
+            if matches_duration then
+                add_to_playlist(video.file, video.label, video.length, "append")
+                appended_to_playlist[video.file] = true
+                auto_added_for_source[url] = true
+                announce(a11y_t("auto_added", video.label))
+                return
             end
-            -- Append first video
-            add_to_playlist(upnext[1].file, upnext[1].label, upnext[1].length, "append")
-            appended_to_playlist[upnext[1].file] = true
         end
     end
+
+    if filters_active then
+        msg.warn("No recommendation matches the configured duration filter")
+        announce(a11y_t("no_duration_match"))
+    end
+end
+
+local function on_playback_restart(_)
+    if auto_add_enabled then
+        auto_add_current_video()
+    elseif opts.fetch_on_start then
+        load_upnext()
+    end
+end
+
+local function toggle_auto_add()
+    auto_add_enabled = not auto_add_enabled
+    announce(a11y_t(auto_add_enabled and "auto_add_enabled" or "auto_add_disabled"), true)
+    if auto_add_enabled
+        and not mp.get_property_bool("idle-active", false)
+        and mp.get_property_native("playback-time") ~= nil then
+        mp.add_timeout(0, auto_add_current_video)
+    end
+    msg.info("auto_add runtime state: " .. tostring(auto_add_enabled))
 end
 
 local function show_menu()
     local upnext, num_upnext = load_upnext()
     if num_upnext == 0 then
+        announce(a11y_t("no_recommendations"))
         return
     end
     mp.osd_message("", 1)
@@ -786,6 +940,8 @@ local function show_menu()
     local timeout = nil
     local no_video = not mp.get_property("current-vo")
     local selected = 1
+    announce(a11y_t("upnext_menu_open", num_upnext), true)
+
     local function choose_prefix(i, already_appended)
         if i == selected and already_appended then
             return opts.cursor_appended_selected
@@ -823,6 +979,7 @@ local function show_menu()
         elseif selected > num_upnext then
             selected = 1
         end
+        announce_video(upnext[selected], selected, num_upnext)
         if timeout ~= nil then
             timeout:kill()
             timeout:resume()
@@ -859,6 +1016,7 @@ local function show_menu()
             -- prevent appending the same video twice
             if appended_to_playlist[upnext[selected].file] == true then
                 msg.info("Already in playlist: " .. upnext[selected].label)
+                announce(a11y_t("already_in_list", upnext[selected].label))
                 if timeout ~= nil then
                     timeout:kill()
                     timeout:resume()
@@ -866,23 +1024,21 @@ local function show_menu()
                 return
             else
                 msg.info("Appending " .. upnext[selected].label .. " to playlist")
+                announce(a11y_t("added_to_list", upnext[selected].label))
                 add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
                 appended_to_playlist[upnext[selected].file] = true
                 selected_move(1)
             end
-        elseif opts.keep_playlist_on_selectthen then
-            -- Play (append to playlist)
+        elseif opts.keep_playlist_on_select then
+            -- Play while preserving the existing playlist.
             msg.info("Playing " .. tostring(upnext[selected].label))
-            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
-            local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-            local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-            mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
-            mp.commandv("playlist-play-index", playlist_index_current + 1)
-            appended_to_playlist[upnext[selected].file] = true
+            announce(a11y_t("playing", upnext[selected].label))
+            play_keep_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length)
             end_terminal_menu()
         else
             -- Play (replace playlist)
             msg.info("Playing " .. tostring(upnext[selected].label))
+            announce(a11y_t("playing_replace", upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
             end_terminal_menu()
         end
@@ -1010,6 +1166,11 @@ local function show_menu()
                 id = "upnext" .. tostring(terminal_id),
             })
             input.set_log(terminal_lines)
+            local summary = a11y_t("terminal_summary", entries)
+            if upnext[selected] then
+                summary = summary .. " " .. a11y_t("selected", upnext[selected].label)
+            end
+            announce(summary, false)
 
             -- Add key binding after opening terminal to overwrite arrow keys
             mp.add_timeout(0.1, function()
@@ -1058,6 +1219,7 @@ local function show_menu()
         mp.remove_key_binding("escape")
         mp.remove_key_binding("quit")
         mp.unobserve_property(update_dimensions)
+        announce(a11y_t("menu_closed"))
     end
 
     if not no_video then
@@ -1068,13 +1230,9 @@ local function show_menu()
     local function on_key_select()
         destroy()
         msg.info("Playing " .. tostring(upnext[selected].label))
+        announce(a11y_t("playing", upnext[selected].label))
         if opts.keep_playlist_on_select then
-            add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append-play")
-            local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-            local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-            mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
-            mp.commandv("playlist-play-index", playlist_index_current + 1)
-            appended_to_playlist[upnext[selected].file] = true
+            play_keep_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length)
         else
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "replace")
         end
@@ -1084,6 +1242,7 @@ local function show_menu()
         -- prevent appending the same video twice
         if appended_to_playlist[upnext[selected].file] == true then
             msg.info("Already in playlist: " .. upnext[selected].label)
+            announce(a11y_t("already_in_list", upnext[selected].label))
             if timeout ~= nil then
                 timeout:kill()
                 timeout:resume()
@@ -1091,6 +1250,7 @@ local function show_menu()
             return
         else
             msg.info("Appending " .. upnext[selected].label .. " to playlist")
+            announce(a11y_t("added_to_list", upnext[selected].label))
             add_to_playlist(upnext[selected].file, upnext[selected].label, upnext[selected].length, "append")
             appended_to_playlist[upnext[selected].file] = true
             selected_move(1)
@@ -1121,6 +1281,7 @@ local function show_menu()
     mp.add_forced_key_binding(opts.toggle_menu_binding, "escape", destroy)
 
     draw_menu()
+    announce_video(upnext[selected], selected, num_upnext)
     return
 end
 
@@ -1286,6 +1447,7 @@ local function open_uosc_menu()
                 keep_open = false
             }
         )
+        announce(a11y_t("not_youtube"))
     elseif num_upnext == 0 then
         table.insert(
             menu_data["items"],
@@ -1299,6 +1461,7 @@ local function open_uosc_menu()
                 keep_open = false
             }
         )
+        announce(a11y_t("no_results"))
     elseif entries == 0 and skipped > 0 then
         local title = "No videos longer than " .. opts.skip_longer_than .. " found"
         if skip_shorter_than > -1 and skip_longer_than > -1 then
@@ -1318,8 +1481,9 @@ local function open_uosc_menu()
                 keep_open = false
             }
         )
+    else
+        announce(a11y_t("recommendations_menu_open", entries), true)
     end
-
 
     menu_json = utils.format_json(menu_data)
     mp.commandv("script-message-to", "uosc", "update-menu", menu_json)
@@ -1340,11 +1504,11 @@ mp.register_script_message(
 -- keybind to launch menu
 mp.add_key_binding(opts.toggle_menu_binding, "upnext-menu", show_menu)
 
-if opts.auto_add then
-    mp.register_event("start-file", on_file_start)
-elseif opts.fetch_on_start then
-    mp.register_event("start-file", load_upnext)
-end
+mp.add_key_binding(opts.toggle_auto_add_binding, "toggle-auto-add", toggle_auto_add)
+mp.register_script_message("toggle-auto-add", toggle_auto_add)
+
+-- Run after playback starts; the source guard also ignores seeks and rebuffering.
+mp.register_event("playback-restart", on_playback_restart)
 
 if opts.restore_window_width then
     mp.observe_property("current-window-scale", "number", on_window_scale_changed)
@@ -1365,18 +1529,15 @@ mp.register_script_message(
 mp.register_script_message(
     "play",
     function(url, label, length)
-        add_to_playlist(url, label, length, "append-play")
-        local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-        local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-        mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
-        mp.commandv("playlist-play-index", playlist_index_current + 1)
-        appended_to_playlist[url] = true
+        announce(a11y_t("playing", tostring(label)))
+        play_keep_playlist(url, label, length)
     end
 )
 
 mp.register_script_message(
     "replace",
     function(url, label, length)
+        announce(a11y_t("playing_replace", tostring(label)))
         add_to_playlist(url, label, length, "replace")
     end
 )
@@ -1384,10 +1545,8 @@ mp.register_script_message(
 mp.register_script_message(
     "insert",
     function(url, label, length)
-        add_to_playlist(url, label, length, "append")
-        local playlist_index_current = tonumber(mp.get_property("playlist-current-pos", "1"))
-        local playlist_index_newfile = tonumber(mp.get_property("playlist-count", "1")) - 1
-        mp.commandv("playlist-move", playlist_index_newfile, playlist_index_current + 1)
+        announce(a11y_t("insert_next", tostring(label)))
+        add_to_playlist(url, label, length, "insert-next")
         appended_to_playlist[url] = true
     end
 )
@@ -1395,6 +1554,7 @@ mp.register_script_message(
 mp.register_script_message(
     "append",
     function(url, label, length)
+        announce(a11y_t("added_to_list", tostring(label)))
         add_to_playlist(url, label, length, "append")
         appended_to_playlist[url] = true
     end
